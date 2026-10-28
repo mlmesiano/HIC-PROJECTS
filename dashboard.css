@@ -36,16 +36,25 @@ body {
 ======================================== */
 
 .titlebar {
-  height: 42px;
+  min-height: 70px;
+  height: auto;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 18px;
+  justify-content: flex-start;
+  gap: 1px;
+  padding: 8px 15px;
   background: var(--green-dark);
   border-bottom: 4px solid var(--yellow);
   color: var(--white);
-  font-size: 14px;
+  font-size: 15px;
+}
+
+.titlebar img {
+  width: 100px;
+  height: 50px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 /* ========================================

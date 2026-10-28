@@ -10,8 +10,8 @@
 
 
 <div class="titlebar">
-  <div><b>🌿 CELTECH COLLEGE OLONGAPO — Digital Library</b> | BSIT 3A Final Project</div>
-  <div style="font-size:11px;background:#f1c40f;color:#000;padding:3px 8px;border-radius:4px;font-weight:bold">GREEN CAMPUS</div>
+  <img src="images.jpg" alt="CELTECH College Olongapo logo">
+  <div><b> CELTECH COLLEGE OLONGAPO — Digital Library</b> | BSIT 3A Final Project</div>
 </div>
 
 <div class="main">
@@ -31,11 +31,6 @@
   </div>
 
   <div class="editor">
-    <div class="tabs">
-      <div id="tab-books" class="tab active">📖 CELTECH Books</div>
-      <div id="tab-my" class="tab">🔖 My Reservations</div>
-      <div id="tab-about" class="tab">🏫 About</div>
-    </div>
     <div class="content" id="content"></div>
   </div>
 </div>
@@ -85,15 +80,13 @@ function updateProfile(){
 function doLogout(){
   if(confirm('Log out?')){
     localStorage.removeItem('celtech_user');
-    window.location.href = 'login.html';
+    window.location.href = 'index.php';
   }
 }
 function showView(v){
   currentView=v;
   document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
   document.getElementById('nav-'+v).classList.add('active');
-  document.getElementById('tab-'+v).classList.add('active');
   document.querySelectorAll('.activity div').forEach((d,i)=>{d.classList.toggle('active',(v==='books'&&i===0)||(v==='my'&&i===1)||(v==='about'&&i===2))});
   render();
 }
@@ -115,7 +108,7 @@ function render() {
     }
 
     content.innerHTML = `
-      <h3 style="color:#0a5e28">🌿 CELTECH Library Catalog — ${filtered.length} Books</h3>
+      <h3 style="color:#0a5e28"> CELTECH Library Catalog — ${filtered.length} Books</h3>
 
       <div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">
         ${categories.map(c => `

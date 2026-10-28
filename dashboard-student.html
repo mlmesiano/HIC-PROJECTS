@@ -30,14 +30,7 @@
 
   </div>
 
-  <div class="editor">
-    <div class="tabs">
-      <div id="tab-books" class="tab active">📖 CELTECH Books</div>
-      <div id="tab-my" class="tab">🔖 My Reservations</div>
-      <div id="tab-about" class="tab">🏫 About</div>
-    </div>
-    <div class="content" id="content"></div>
-  </div>
+ 
 </div>
 
 <div class="statusbar">
@@ -85,7 +78,7 @@ function updateProfile(){
 function doLogout(){
   if(confirm('Log out?')){
     localStorage.removeItem('celtech_user');
-    window.location.href = 'login.html';
+    window.location.href = 'index.php';
   }
 }
 function showView(v){
