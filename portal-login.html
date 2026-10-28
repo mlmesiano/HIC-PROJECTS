@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CELTECH Library - BSIT Project</title>
+<style>
+  :root {
+    --forest: #0a3d1c;
+    --green: #118a3e;
+    --green-dark: #0b6b2f;
+    --mint: #f0f6e8;
+    --line: #cfe3c6;
+    --red: #d93025;
+    --red-bg: #fdecea;
+    --text: #1c2b21;
+    --muted: #6b7a70;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--forest);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  #login { width: 100%; max-width: 500px; }
+  .card {
+    background: #fff;
+    border: 4px solid #0d5c27;
+    border-radius: 14px;
+    padding: 46px 54px 40px;
+    box-shadow: 0 0 0 3px rgba(17,138,62,.35), 0 20px 50px rgba(0,0,0,.35);
+  }
+  .brand { text-align: center; }
+  .brand .logo { font-size: 58px; line-height: 1; }
+  .brand h1 { margin: 8px 0 6px; font-size: 30px; letter-spacing: .5px; color: #0d5c27; }
+  .brand p { margin: 0 0 26px; font-size: 14px; color: var(--muted); line-height: 1.55; }
+
+  /* Role tabs (replaces Log in / Create account) */
+  .tabs {
+    position: relative;
+    display: flex;
+    background: #eef1ee;
+    border-radius: 999px;
+    padding: 5px;
+    margin-bottom: 24px;
+  }
+  /* White pill that slides behind the active tab */
+  .indicator {
+    position: absolute;
+    top: 5px; bottom: 5px; left: 0;
+    width: 0;
+    background: #fff;
+    border-radius: 999px;
+    box-shadow: 0 1px 5px rgba(0,0,0,.18);
+    transition: transform .4s cubic-bezier(.4,0,.2,1), width .4s cubic-bezier(.4,0,.2,1);
+    z-index: 0;
+  }
+  .tab {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    border: 0;
+    background: transparent;
+    padding: 13px 0;
+    border-radius: 999px;
+    font: 600 16px "Segoe UI", system-ui, sans-serif;
+    color: var(--muted);
+    cursor: pointer;
+    transition: flex-grow .45s cubic-bezier(.34,1.4,.64,1), opacity .3s ease, color .25s;
+  }
+  .tab.active { color: #0d5c27; }
+  /* Admin tab starts collapsed on the right, then pops in */
+  .tab.admin-tab { flex-grow: 0; opacity: 0; pointer-events: none; }
+  .tab.admin-tab.show { flex-grow: 1; opacity: 1; pointer-events: auto; }
+  .tab:focus-visible, .field input:focus-visible, #loginButton:focus-visible, .link-btn:focus-visible, .eye:focus-visible {
+    outline: 3px solid #7fcf9a;
+    outline-offset: 2px;
+  }
+
+  .welcome { margin: 0 0 16px; font-size: 18px; font-weight: 700; text-align: center; }
+
+  /* Error notification sits ABOVE the fields/button */
+  #loginError {
+    display: none;
+    font-size: 14px;
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid #f3b8b3;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .field { position: relative; margin-bottom: 14px; }
+  .field input {
+    width: 100%;
+    padding: 17px 48px 17px 16px;
+    background: var(--mint);
+    border: 2px solid var(--line);
+    border-radius: 8px;
+    font: 600 16px "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    text-align: center;
+    transition: border-color .2s, background .2s;
+  }
+  .field input::placeholder { color: var(--muted); font-weight: 600; }
+  .field input.login-input-error { border-color: var(--red); background: #fff6f5; }
+  .field input.login-input-valid { border-color: var(--green); background: #f2fbf4; }
+
+  .eye {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    border: 0; background: transparent; cursor: pointer;
+    font-size: 16px; padding: 6px; color: var(--muted);
+  }
+
+  #loginButton {
+    width: 100%;
+    margin-top: 6px;
+    padding: 17px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--green);
+    color: #fff;
+    font: 700 17px "Segoe UI", system-ui, sans-serif;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background .2s;
+  }
+  #loginButton:hover:not(:disabled) { background: var(--green-dark); }
+  #loginButton:disabled { opacity: .8; cursor: wait; }
+
+  .login-spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hint { margin: 18px 0 0; text-align: center; font-size: 12.5px; color: var(--muted); }
+  .link-btn {
+    display: block; margin: 8px auto 0;
+    border: 0; background: none; cursor: pointer;
+    font: 13.5px "Segoe UI", system-ui, sans-serif; color: var(--muted);
+    text-decoration: underline;
+  }
+
+  /* ===== Forgot Password link + modal ===== */
+  .fp-link { margin-top: 16px; color: var(--green-dark); font-weight: 600; font-size: 14px; }
+  .fp-link:hover { color: var(--forest); }
+  .fp-overlay {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(4, 24, 11, .65);
+    display: none; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .fp-overlay.show { display: flex; }
+  .fp-modal {
+    position: relative; width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto;
+    background: #fff; border: 4px solid #0d5c27; border-radius: 14px;
+    padding: 34px 34px 26px;
+    box-shadow: 0 0 0 3px rgba(17,138,62,.35), 0 20px 50px rgba(0,0,0,.45);
+    animation: fpPop .3s cubic-bezier(.34,1.4,.64,1);
+  }
+  @keyframes fpPop { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+  .fp-x {
+    position: absolute; top: 10px; right: 12px; width: 34px; height: 34px;
+    border: 0; border-radius: 50%; background: #eef1ee; color: var(--muted);
+    font-size: 16px; font-weight: 700; cursor: pointer; transition: background .2s, color .2s;
+  }
+  .fp-x:hover { background: #fdecea; color: var(--red); }
+  .fp-modal h3 { margin: 0 0 8px; text-align: center; font-size: 24px; color: #0d5c27; }
+  .fp-desc { margin: 0 0 14px; text-align: center; font-size: 14px; line-height: 1.55; color: var(--muted); }
+  .fp-steps { display: flex; justify-content: center; gap: 8px; margin-bottom: 18px; }
+  .fp-dot { width: 28px; height: 6px; border-radius: 999px; background: #dfe8df; transition: background .3s; }
+  .fp-dot.on { background: var(--green); }
+  .fp-msg {
+    display: none; margin-bottom: 12px; padding: 9px 12px; border-radius: 8px;
+    font-size: 13.5px; font-weight: 600; text-align: center;
+    background: var(--red-bg); color: var(--red); border: 1px solid #f3b8b3;
+  }
+  .fp-step { display: none; }
+  .fp-step.on { display: block; animation: fpFade .3s ease; }
+  @keyframes fpFade { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+  .fp-modal .field input { padding: 15px 16px; }
+  .fp-btn {
+    width: 100%; padding: 15px; border: 0; border-radius: 8px;
+    background: var(--green); color: #fff; font: 700 16px "Segoe UI", system-ui, sans-serif;
+    cursor: pointer; transition: background .2s;
+  }
+  .fp-btn:hover { background: var(--green-dark); }
+  .fp-otpbox {
+    margin-bottom: 14px; padding: 12px; text-align: center; border-radius: 10px;
+    background: #fff9db; border: 2px dashed #e0b800; color: #5c4a00; font-size: 12.5px;
+  }
+  .fp-otpbox b { display: block; margin-top: 4px; font-size: 28px; letter-spacing: 6px; color: #3a2f00; }
+  .fp-ok { text-align: center; padding: 10px 0 4px; }
+  .fp-ok .tick {
+    width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%;
+    background: var(--green); color: #fff; font-size: 34px; line-height: 64px;
+  }
+  .fp-ok p { margin: 0; font-size: 14.5px; line-height: 1.55; color: var(--text); }
+  .fp-small { display: block; margin: 12px auto 0; border: 0; background: none; cursor: pointer;
+    font: 13px "Segoe UI", system-ui, sans-serif; color: var(--green-dark); text-decoration: underline; }
+  .fp-back {
+    width: 100%; margin-top: 16px; padding: 13px; border-radius: 8px;
+    background: #fff; color: var(--green-dark); border: 2px solid var(--green);
+    font: 700 15px "Segoe UI", system-ui, sans-serif; cursor: pointer; transition: background .2s;
+  }
+  .fp-back:hover { background: var(--mint); }
+  .fp-x:focus-visible, .fp-btn:focus-visible, .fp-back:focus-visible, .fp-small:focus-visible {
+    outline: 3px solid #7fcf9a; outline-offset: 2px;
+  }
+  @media (max-width: 480px) { .fp-modal { padding: 30px 20px 22px; } }
+
+  /* Demo "logged in" screen (replace with your real dashboard) */
+  #portal { display: none; color: #fff; text-align: center; }
+  #portal button {
+    margin-top: 16px; padding: 10px 22px; border: 0; border-radius: 8px;
+    background: #fff; color: #0d5c27; font-weight: 700; cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation-duration: 1.5s !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="card">
+    <div class="brand">
+      <div class="logo"><img src="images.jpg" alt="CELTECH Library Logo error" style="height: 100px;" width="100"></div>
+      <h1>CELTECH LIBRARY</h1>
+      <p>BSIT 3A - Digital Library Reservation<br>Choose your account type</p>
+    </div>
+
+    <div class="tabs" role="tablist" id="tabs">
+      <span class="indicator" id="indicator"></span>
+      <button class="tab active" id="tab-student" role="tab" onclick="setRole('student')">Student</button>
+      <button class="tab" id="tab-teacher" role="tab" onclick="setRole('teacher')">Teacher</button>
+      <button class="tab admin-tab" id="tab-admin" role="tab" onclick="setRole('admin')">Admin</button>
+    </div>
+
+    <p class="welcome" id="loginTitle">Student login</p>
+
+    <div id="loginError" role="alert"></div>
+
+    <div class="field">
+      <input type="text" id="loginName" placeholder="Name" autocomplete="username">
+    </div>
+    <div class="field">
+      <input type="password" id="loginId" placeholder="Password" autocomplete="current-password">
+      <button type="button" class="eye" id="eyeBtn" aria-label="Show password" onclick="togglePass()">👁</button>
+    </div>
+
+    <button id="loginButton" onclick="doLogin()">LOGIN</button>
+
+    <button type="button" class="link-btn fp-link" id="forgotLink" onclick="openForgot()">Forgot Password?</button>
+
+    <p class="hint" id="loginHint">Demo: student / password</p>
+    <button class="link-btn" id="adminLink" onclick="setRole('admin')">Library staff? Admin login</button>
+  </div>
+</div>
+
+<!-- FORGOT PASSWORD MODAL (demo OTP flow) -->
+<div class="fp-overlay" id="fpOverlay" aria-hidden="true">
+  <div class="fp-modal" role="dialog" aria-modal="true" aria-labelledby="fpTitle" aria-describedby="fpDesc">
+    <button type="button" class="fp-x" aria-label="Close" onclick="closeForgot()">✕</button>
+
+    <h3 id="fpTitle">Forgot Password?</h3>
+    <p class="fp-desc" id="fpDesc"></p>
+    <div class="fp-steps" aria-hidden="true">
+      <span class="fp-dot on"></span><span class="fp-dot"></span><span class="fp-dot"></span>
+    </div>
+
+    <div class="fp-msg" id="fpError" role="alert"></div>
+
+    <!-- Step 1: email -->
+    <div class="fp-step on" id="fpStep1">
+      <div class="field"><input type="email" id="fpEmail" placeholder="Email address" autocomplete="email" aria-label="Email address"></div>
+      <button type="button" class="fp-btn" onclick="sendOtp()">Send OTP</button>
+    </div>
+
+    <!-- Step 2: verify OTP -->
+    <div class="fp-step" id="fpStep2">
+      <div class="fp-otpbox">DEMO ONLY - no email is sent. Your OTP is:<b id="fpOtpShow">------</b></div>
+      <div class="field"><input type="text" id="fpOtpInput" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit OTP" autocomplete="one-time-code" aria-label="OTP code"></div>
+      <button type="button" class="fp-btn" onclick="verifyOtp()">Verify OTP</button>
+      <button type="button" class="fp-small" onclick="sendOtp()">Generate a new OTP</button>
+    </div>
+
+    <!-- Step 3: new password -->
+    <div class="fp-step" id="fpStep3">
+      <div class="field"><input type="password" id="fpNewPass" placeholder="New Password (min. 6 characters)" autocomplete="new-password" aria-label="New password"></div>
+      <div class="field"><input type="password" id="fpConfirmPass" placeholder="Confirm Password" autocomplete="new-password" aria-label="Confirm password"></div>
+      <button type="button" class="fp-btn" onclick="resetPassword()">Reset Password</button>
+    </div>
+
+    <!-- Step 4: success -->
+    <div class="fp-step" id="fpStep4">
+      <div class="fp-ok">
+        <div class="tick">✓</div>
+        <p id="fpSuccessText"></p>
+      </div>
+    </div>
+
+    <button type="button" class="fp-back" onclick="closeForgot()">Back to Login</button>
+  </div>
+</div>
+
+<!-- DEMO PORTAL (replace with your dashboard) -->
+<div id="portal">
+  <h2 id="portalText"></h2>
+  <button onclick="logout()">Log out</button>
+</div>
+
+<script>
+// ================== SET YOUR PAGE LINKS HERE ==================
+// Where each role goes after a successful login.
+// Leave "" (empty) until the page exists - a demo screen shows instead.
+const pages = {
+  student: "dashboard-student.html",
+  teacher: "dashboard-teacher.html",   // <-- put teacher page here, e.g. "teacher.html"
+  admin:   "dashboard-admin.html"    // <-- put admin page here,   e.g. "admin.html"
+};
+// ===============================================================
+
+// ---------- Demo accounts (one portal, 3 roles) ----------
+const accounts = {
+  student: { name: "student", pass: "password" },
+  teacher: { name: "teacher", pass: "password" },
+  admin:   { name: "admin",   pass: "password" }
+};
+
+// Saved demo passwords (from Forgot Password) override the defaults above
+const FP_STORE = "celtech_passwords";
+try {
+  const savedPass = JSON.parse(localStorage.getItem(FP_STORE) || "{}");
+  Object.keys(savedPass).forEach(function (r) {
+    if (accounts[r] && savedPass[r]) accounts[r].pass = savedPass[r];
+  });
+} catch (e) { /* storage blocked: keep defaults */ }
+
+let currentRole = "student";
+let adminShown = false;
+
+// Slide the white pill under the active tab
+function moveIndicator() {
+  const tab = document.querySelector(".tab.active");
+  const ind = document.getElementById("indicator");
+  if (!tab || !tab.offsetWidth) return;
+  ind.style.width = tab.offsetWidth + "px";
+  ind.style.transform = "translateX(" + tab.offsetLeft + "px)";
+}
+
+// Keep the pill glued to its tab while tabs are resizing (no lag)
+function trackIndicator(ms) {
+  const ind = document.getElementById("indicator");
+  ind.style.transition = "none";
+  const end = performance.now() + ms;
+  (function frame() {
+    moveIndicator();
+    if (performance.now() < end) requestAnimationFrame(frame);
+    else ind.style.transition = "";
+  })();
+}
+
+function activateTab(role) {
+  ["student", "teacher", "admin"].forEach(function (r) {
+    document.getElementById("tab-" + r).classList.toggle("active", r === role);
+  });
+  moveIndicator();
+}
+
+function setRole(role) {
+  currentRole = role;
+
+  const label = role.charAt(0).toUpperCase() + role.slice(1);
+  document.getElementById("loginTitle").textContent = label + " login";
+  document.getElementById("loginHint").textContent =
+    "Demo: " + accounts[role].name + " / " + accounts[role].pass;
+
+  if (role === "admin" && !adminShown) {
+    // 1) Admin tab pops in on the right  2) pill slides from Teacher to Admin
+    adminShown = true;
+    document.getElementById("adminLink").style.display = "none";
+    document.getElementById("tab-admin").classList.add("show");
+    trackIndicator(480);
+    setTimeout(function () { activateTab("admin"); }, 480);
+  } else {
+    activateTab(role);
+  }
+
+  clearValidation();
+  document.getElementById("loginName").value = "";
+  document.getElementById("loginId").value = "";
+  document.getElementById("loginName").focus();
+}
+
+window.addEventListener("resize", moveIndicator);
+window.addEventListener("load", function () { trackIndicator(100); });
+
+function clearValidation() {
+  document.getElementById("loginName").classList.remove("login-input-error", "login-input-valid");
+  document.getElementById("loginId").classList.remove("login-input-error", "login-input-valid");
+  document.getElementById("loginError").style.display = "none";
+}
+
+function showError(msg) {
+  const error = document.getElementById("loginError");
+  error.textContent = msg;
+  error.style.display = "block";
+}
+
+function togglePass() {
+  const input = document.getElementById("loginId");
+  const show = input.type === "password";
+  input.type = show ? "text" : "password";
+  document.getElementById("eyeBtn").setAttribute("aria-label", show ? "Hide password" : "Show password");
+}
+
+function doLogin() {
+  const nameInput = document.getElementById("loginName");
+  const passInput = document.getElementById("loginId");
+  const button = document.getElementById("loginButton");
+
+  const name = nameInput.value.trim();
+  const pass = passInput.value.trim();
+
+  clearValidation();
+
+  // Empty fields -> red border
+  if (!name || !pass) {
+    showError("Please fill in all required fields.");
+    if (!name) nameInput.classList.add("login-input-error");
+    if (!pass) passInput.classList.add("login-input-error");
+    (!name ? nameInput : passInput).focus();
+    return;
+  }
+
+  // Check against the selected role's account
+  const account = accounts[currentRole];
+  const correctName = name.toLowerCase() === account.name;
+  const correctPass = pass === account.pass;
+
+  if (!correctName || !correctPass) {
+    nameInput.classList.add(correctName ? "login-input-valid" : "login-input-error");
+    passInput.classList.add(correctPass ? "login-input-valid" : "login-input-error");
+    showError("Invalid login. No matching " + currentRole + " account, try again.");
+    return;
+  }
+
+  // Loading effect
+  button.disabled = true;
+  button.innerHTML = '<span class="login-spinner"></span>Logging in...';
+
+  setTimeout(() => {
+    localStorage.setItem("celtech_user", JSON.stringify({ name: name, role: currentRole }));
+
+    // Go to this role's page (if a link is set above)
+    if (pages[currentRole]) {
+      window.location.href = pages[currentRole];
+      return;
+    }
+
+    document.getElementById("login").style.display = "none";
+    button.disabled = false;
+    button.textContent = "LOGIN";
+
+    // Hook into your existing dashboard code here
+    if (typeof updateProfile === "function") updateProfile();
+    if (typeof render === "function") render();
+    showPortal(currentRole, name);
+  }, 1200);
+}
+window.doLogin = doLogin;
+
+// Red -> green as soon as the person types again
+function validateLoginField(input) {
+  input.classList.remove("login-input-error", "login-input-valid");
+  document.getElementById("loginError").style.display = "none";
+
+  const value = input.value.trim();
+  if (!value) return;
+
+  if (input.id === "loginName") {
+    // Name turns green only when it matches the account's record
+    if (value.toLowerCase() === accounts[currentRole].name) input.classList.add("login-input-valid");
+  } else {
+    input.classList.add("login-input-valid");
+  }
+}
+
+document.getElementById("loginName").addEventListener("input", function () { validateLoginField(this); });
+document.getElementById("loginId").addEventListener("input", function () { validateLoginField(this); });
+
+// Enter key submits
+["loginName", "loginId"].forEach(function (id) {
+  document.getElementById(id).addEventListener("keydown", function (e) {
+    if (e.key === "Enter") doLogin();
+  });
+});
+
+// ================= FORGOT PASSWORD (DEMO) =================
+// Demo only: the OTP is shown on screen and passwords sit in localStorage.
+let fpOtp = null;        // the generated OTP
+let fpVerified = false;  // true only after the correct OTP is entered
+let fpRole = "student";  // which account is being reset
+let fpFocus = null;      // element to refocus when the modal closes
+
+const fpText = {
+  1: "Enter your email and we'll generate a one-time code (demo, nothing is actually sent).",
+  2: "Type the 6-digit OTP shown below to verify it's you.",
+  3: "Choose a new password for your account. Use at least 6 characters.",
+  4: ""
+};
+
+function fpEl(id) { return document.getElementById(id); }
+
+function showStep(n) {
+  for (let i = 1; i <= 4; i++) fpEl("fpStep" + i).classList.toggle("on", i === n);
+  document.querySelectorAll(".fp-dot").forEach(function (d, i) { d.classList.toggle("on", i < Math.min(n, 3)); });
+  const label = fpRole.charAt(0).toUpperCase() + fpRole.slice(1);
+  fpEl("fpDesc").textContent = n === 4 ? "" : fpText[n] + (n === 1 ? " (" + label + " account)" : "");
+  fpEl("fpDesc").style.display = n === 4 ? "none" : "block";
+  fpEl("fpTitle").textContent = n === 4 ? "Password Updated" : "Forgot Password?";
+  clearFpError();
+}
+
+function showFpError(msg, input) {
+  const box = fpEl("fpError");
+  box.textContent = msg;
+  box.style.display = "block";
+  if (input) { input.classList.add("login-input-error"); input.focus(); }
+}
+
+function clearFpError() {
+  fpEl("fpError").style.display = "none";
+  ["fpEmail", "fpOtpInput", "fpNewPass", "fpConfirmPass"].forEach(function (id) {
+    fpEl(id).classList.remove("login-input-error", "login-input-valid");
+  });
+}
+
+function openForgot() {
+  fpFocus = document.activeElement;
+  fpRole = currentRole;               // reuse the selected tab's role
+  resetForgot();
+  fpEl("fpOverlay").classList.add("show");
+  fpEl("fpOverlay").setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  setTimeout(function () { fpEl("fpEmail").focus(); }, 50);
+}
+
+function resetForgot() {
+  ["fpEmail", "fpOtpInput", "fpNewPass", "fpConfirmPass"].forEach(function (id) { fpEl(id).value = ""; });
+  fpOtp = null;
+  fpVerified = false;
+  showStep(1);
+}
+
+function closeForgot() {
+  fpEl("fpOverlay").classList.remove("show");
+  fpEl("fpOverlay").setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  resetForgot();
+  if (fpFocus && fpFocus.focus) fpFocus.focus();
+}
+
+function sendOtp() {
+  const email = fpEl("fpEmail");
+  const value = email.value.trim();
+  clearFpError();
+
+  if (!value) return showFpError("Please enter your email address.", email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return showFpError("Please enter a valid email address.", email);
+
+  fpOtp = String(Math.floor(100000 + Math.random() * 900000));  // random 6 digits
+  fpVerified = false;
+  fpEl("fpOtpShow").textContent = fpOtp;
+  fpEl("fpOtpInput").value = "";
+  showStep(2);
+  fpEl("fpOtpInput").focus();
+}
+
+function verifyOtp() {
+  const input = fpEl("fpOtpInput");
+  const value = input.value.trim();
+  clearFpError();
+
+  if (!fpOtp) { showStep(1); return showFpError("Please request an OTP first."); }
+  if (!value) return showFpError("Please enter the OTP.", input);
+  if (value !== fpOtp) return showFpError("Incorrect OTP. Try again.", input);
+
+  fpVerified = true;
+  input.classList.add("login-input-valid");
+  showStep(3);
+  fpEl("fpNewPass").focus();
+}
+
+function resetPassword() {
+  const p1 = fpEl("fpNewPass"), p2 = fpEl("fpConfirmPass");
+  clearFpError();
+
+  // Never allow a reset without a verified OTP
+  if (!fpVerified) { showStep(1); return showFpError("Please verify your OTP first."); }
+  if (p1.value.length < 6) return showFpError("Password must be at least 6 characters.", p1);
+  if (p1.value !== p2.value) {
+    p1.classList.add("login-input-error");
+    return showFpError("Passwords do not match.", p2);
+  }
+
+  accounts[fpRole].pass = p1.value;   // update the selected role's demo account
+  saveDemoPasswords();
+
+  const label = fpRole.charAt(0).toUpperCase() + fpRole.slice(1);
+  fpEl("fpSuccessText").textContent = "Your " + label + " password was updated. You can now log in with your new password.";
+  fpOtp = null;
+  fpVerified = false;
+  showStep(4);
+
+  // keep the login page in sync
+  fpEl("loginHint").textContent = "Demo: " + accounts[currentRole].name + " / " + accounts[currentRole].pass;
+  document.getElementById("loginId").value = "";
+}
+
+function saveDemoPasswords() {
+  try {
+    const out = {};
+    Object.keys(accounts).forEach(function (r) { out[r] = accounts[r].pass; });
+    localStorage.setItem(FP_STORE, JSON.stringify(out));
+  } catch (e) { /* storage blocked */ }
+}
+
+// Click outside the modal to close
+fpEl("fpOverlay").addEventListener("click", function (e) {
+  if (e.target === this) closeForgot();
+});
+
+// Escape closes, Enter submits the current step, Tab stays inside the modal
+document.addEventListener("keydown", function (e) {
+  if (!fpEl("fpOverlay").classList.contains("show")) return;
+
+  if (e.key === "Escape") { closeForgot(); return; }
+
+  if (e.key === "Enter" && e.target.tagName === "INPUT") {
+    e.preventDefault();
+    if (fpEl("fpStep1").classList.contains("on")) sendOtp();
+    else if (fpEl("fpStep2").classList.contains("on")) verifyOtp();
+    else if (fpEl("fpStep3").classList.contains("on")) resetPassword();
+    return;
+  }
+
+  if (e.key === "Tab") {
+    const items = Array.prototype.filter.call(
+      fpEl("fpOverlay").querySelectorAll("button, input"),
+      function (el) { return el.offsetParent !== null; }
+    );
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+// ================= END FORGOT PASSWORD =================
+
+// ---------- Demo portal screen (delete once your dashboard is connected) ----------
+function showPortal(role, name) {
+  const text = role === "admin" ? "Admin panel" : role === "teacher" ? "Teacher portal" : "Student portal";
+  document.getElementById("portalText").textContent = text + " - welcome, " + name;
+  document.getElementById("portal").style.display = "block";
+}
+
+function logout() {
+  localStorage.removeItem("celtech_user");
+  document.getElementById("portal").style.display = "none";
+  document.getElementById("login").style.display = "block";
+  adminShown = false;
+  document.getElementById("tab-admin").classList.remove("show");
+  document.getElementById("adminLink").style.display = "block";
+  setRole("student");
+  requestAnimationFrame(moveIndicator);
+}
+</script>
+</body>
+</html>

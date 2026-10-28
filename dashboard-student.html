@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CELTECH Library - BSIT Project</title>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+
+<div class="titlebar">
+  <div><b>🌿 CELTECH COLLEGE OLONGAPO — Digital Library</b> | BSIT 3A Final Project</div>
+  <div style="font-size:11px;background:#f1c40f;color:#000;padding:3px 8px;border-radius:4px;font-weight:bold">GREEN CAMPUS</div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <h3>Navigation</h3>
+    <div id="nav-books" class="nav-item active" onclick="showView('books')">📖 CELTECH Books</div>
+    <div id="nav-my" class="nav-item" onclick="showView('my')">🔖 My Reservations</div>
+    <div id="nav-about" class="nav-item" onclick="showView('about')">🏫 About Library</div>
+
+   <h3 id="pHeading">Student Info</h3>
+<div class="profile">
+  <small id="pLabel">STUDENT NAME</small><p id="pName">-</p>
+  <small>ROLE</small><p id="pRole" style="margin-bottom:0">-</p>
+  <button class="btn logout" onclick="doLogout()">LOG OUT</button>
+</div>
+
+  </div>
+
+  <div class="editor">
+    <div class="tabs">
+      <div id="tab-books" class="tab active">📖 CELTECH Books</div>
+      <div id="tab-my" class="tab">🔖 My Reservations</div>
+      <div id="tab-about" class="tab">🏫 About</div>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span id="statusUser">Not logged in</span><span id="statusMsg">| Ready</span><span style="margin-left:auto">CELTECH All Green Theme | ID: 202411059 format</span>
+</div>
+
+<script>
+  
+
+const books = [
+  {id:1,title:"Data Structures & Algorithms",author:"Goodrich",category:"BSIT Major",copies:3,shelf:"A1"},
+  {id:2,title:"Computer Networking",author:"Kurose",category:"BSIT Major",copies:2,shelf:"A2"},
+  {id:3,title:"Capstone Manual",author:"CELTECH Faculty",category:"Thesis",copies:5,shelf:"C1"},
+  {id:4,title:"Noli Me Tangere",author:"Jose Rizal",category:"GenEd",copies:4,shelf:"G1"},
+  {id:5,title:"Purposive Communication",author:"Madrunio",category:"GenEd",copies:2,shelf:"G2"},
+  {id:6,title:"Database Systems",author:"Elmasri",category:"BSIT Major",copies:1,shelf:"A3"},
+  {id:7,title:"OJT Manual",author:"CELTECH Guidance",category:"Thesis",copies:0,shelf:"C2"},
+  {id:8,title:"Web Development PHP & MySQL",author:"Welling",category:"BSIT Major",copies:2,shelf:"A4"},
+];
+
+
+let reservations = JSON.parse(localStorage.getItem('celtech_final')||'[]');
+let currentView='books'; let currentCat='All';
+const categories=['All','BSIT Major','GenEd','Thesis'];
+
+
+function updateProfile(){
+  let u = null;
+  try { u = JSON.parse(localStorage.getItem('celtech_user')); } catch(e){}
+
+  // not logged in -> send back to the login page
+  if(!u){ window.location.href = 'login.html'; return; }
+
+  const role  = u.role || 'student';
+  const label = role.charAt(0).toUpperCase() + role.slice(1);                 // "Student" / "Teacher" / "Admin"
+  const name  = u.name.charAt(0).toUpperCase() + u.name.slice(1).toLowerCase();
+
+  document.getElementById('pHeading').textContent = label + ' Info';          // Student Info / Teacher Info
+  document.getElementById('pLabel').textContent   = label.toUpperCase() + ' NAME';
+  document.getElementById('pName').textContent    = name;
+  document.getElementById('pRole').textContent    = label;
+  document.getElementById('statusUser').textContent = `👤 ${name} (${label})`;
+}
+
+function doLogout(){
+  if(confirm('Log out?')){
+    localStorage.removeItem('celtech_user');
+    window.location.href = 'login.html';
+  }
+}
+function showView(v){
+  currentView=v;
+  document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));
+  document.getElementById('nav-'+v).classList.add('active');
+  document.getElementById('tab-'+v).classList.add('active');
+  document.querySelectorAll('.activity div').forEach((d,i)=>{d.classList.toggle('active',(v==='books'&&i===0)||(v==='my'&&i===1)||(v==='about'&&i===2))});
+  render();
+}
+function filterCat(c){currentCat=c;render();}
+
+function render() {
+  const content = document.getElementById('content');
+
+  if (currentView === 'books') {
+    let filtered = currentCat === 'All'
+      ? books
+      : books.filter(b => b.category === currentCat);
+
+    const searchInput = document.getElementById('searchInput');
+    const s = searchInput ? searchInput.value.toLowerCase() : '';
+
+    if (s) {
+      filtered = filtered.filter(b => b.title.toLowerCase().includes(s));
+    }
+
+    content.innerHTML = `
+      <h3 style="color:#0a5e28">🌿 CELTECH Library Catalog — ${filtered.length} Books</h3>
+
+      <div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">
+        ${categories.map(c => `
+          <span onclick="filterCat('${c}')"
+            style="padding:6px 14px;border:2px solid ${currentCat === c ? '#0e8a3a' : '#c8e6c9'};border-radius:20px;font-size:11px;cursor:pointer;background:${currentCat === c ? '#0e8a3a' : '#fff'};color:${currentCat === c ? '#fff' : '#0a5e28'};font-weight:bold">
+            ${c}
+          </span>
+        `).join('')}
+      </div>
+
+      <input id="searchInput" class="search"
+        placeholder="Search CELTECH Books..."
+        oninput="render()">
+
+      <div class="book-grid">
+        ${filtered.map(b => {
+          const reservedCount = reservations.filter(r => r.id === b.id).length;
+          const available = b.copies - reservedCount;
+          const isMine = reservations.some(r => r.id === b.id);
+
+          const disabled = available <= 0 || isMine || reservations.length >= 3;
+
+          return `
+            <div class="book">
+              <h4>${b.title}</h4>
+              <div class="meta">Author: ${b.author} | Shelf: ${b.shelf}</div>
+              <div class="meta">${b.category} | Copies: ${b.copies}</div>
+              <span class="status ${available > 0 ? 'available' : 'reserved'}">
+                ${available > 0 ? available + ' available' : 'OUT OF STOCK'}
+              </span>
+              <button class="btn" ${disabled ? 'disabled' : ''}
+                onclick="reserve(${b.id})">
+                ${isMine ? '✓ Reserved' : available <= 0 ? 'Not Available' : 'Reserve Now'}
+              </button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+  } else if (currentView === 'my') {
+    const u = JSON.parse(localStorage.getItem('celtech_user') || 'null');
+
+    if (!u) {
+      content.innerHTML = '<p>Please log in first.</p>';
+      return;
+    }
+
+    content.innerHTML = `
+      <h3 style="color:#0a5e28">📖 My Reservations — ID: ${u.id}</h3>
+      <p style="font-size:12px;color:#555;margin:8px 0">
+        Present ID ${u.id} at 2nd Floor Library to claim.
+      </p>
+
+      ${reservations.length === 0
+        ? '<p style="color:#888;margin-top:20px">No reservations yet. Go to CELTECH Books.</p>'
+        : reservations.map(r => {
+            const due = new Date();
+            due.setDate(due.getDate() + 7);
+
+            return `
+              <div class="res-item">
+                <div>
+                  <b>${r.title}</b>
+                  <span style="background:#0e8a3a;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">${r.shelf}</span>
+                  <br>
+                  <span style="color:#666">
+                    Reserved: ${r.date} | Due: ${due.toLocaleDateString()} | ID: ${r.studentId}
+                  </span>
+                </div>
+                <button class="btn cancel" style="width:auto"
+                  onclick="cancel(${r.id})">Cancel</button>
+              </div>
+            `;
+          }).join('')
+      }
+    `;
+
+  } else {
+    content.innerHTML = `
+      <h3 style="color:#0a5e28">🏫 About CELTECH Library</h3>
+      <div style="margin-top:15px;line-height:1.8;font-size:13px;background:#fff;padding:18px;border-radius:8px;border:2px solid #0e8a3a">
+        <b>School:</b> Celtech College Olongapo (All Green)<br>
+        <b>Project:</b> Digital Library Reservation System<br>
+        <b>Course:</b> BSIT 3A<br>
+        <b>ID Format:</b> 9 digits — Example 202411059<br>
+        <b>Theme:</b> CELTECH Green & White<br><br>
+        <span style="color:#0e8a3a;font-weight:bold">
+          Features: Login, Reserve books, My Reservations.
+        </span><br><br>
+        <span style="color:#888">// Student project — BSIT Final</span>
+      </div>
+    `;
+  }
+}
+function reserve(id) {
+  const u = JSON.parse(localStorage.getItem('celtech_user') || 'null');
+
+  if (!u) {
+    alert('Please log in first.');
+    return;
+  }
+
+  if (reservations.length >= 3) {
+    alert('Maximum of 3 reservations.');
+    return;
+  }
+
+  const b = books.find(x => x.id === id);
+  if (!b || b.copies <= reservations.filter(r => r.id === id).length) {
+    alert('This book is unavailable.');
+    return;
+  }
+
+  if (reservations.some(r => r.id === id)) {
+    alert('You already reserved this book.');
+    return;
+  }
+
+  reservations.push({
+    ...b,
+    date: new Date().toLocaleDateString(),
+    studentId: u.id
+  });
+
+  localStorage.setItem('celtech_final', JSON.stringify(reservations));
+  render();
+}
+
+function cancel(id) {
+  reservations = reservations.filter(r => r.id !== id);
+  localStorage.setItem('celtech_final', JSON.stringify(reservations));
+  render();
+}
+updateProfile();
+render();
+</script>
+</body>
+</html>
