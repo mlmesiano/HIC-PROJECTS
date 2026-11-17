@@ -5,180 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CELTECH Library - Admin Dashboard</title>
 <link rel="stylesheet" href="dashboard.css">
-<style>
-  .restock-dialog {
-    width: min(440px, calc(100% - 32px));
-    max-width: none;
-    max-height: calc(100% - 32px);
-    margin: auto;
-    padding: 0;
-    overflow: auto;
-    background: #ffffff;
-    border: 0;
-    border-radius: 12px;
-    color: var(--text);
-    box-shadow: 0 18px 55px rgba(0, 0, 0, 0.25);
-  }
-
-  .restock-dialog::backdrop {
-    background: rgba(8, 39, 19, 0.58);
-    backdrop-filter: blur(2px);
-  }
-
-  .restock-dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 18px 22px;
-    background: var(--green-dark);
-    color: var(--white);
-  }
-
-  .restock-dialog-header h2 {
-    font-size: 18px;
-  }
-
-  .restock-dialog-close {
-    width: 34px;
-    height: 34px;
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    border-radius: 50%;
-    background: transparent;
-    color: var(--white);
-    font-size: 22px;
-    line-height: 1;
-    cursor: pointer;
-  }
-
-  .restock-dialog-close:hover {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .restock-dialog-body {
-    padding: 22px;
-  }
-
-  .restock-book-title {
-    margin-bottom: 14px;
-    color: var(--green-dark);
-    font-size: 16px;
-    font-weight: 700;
-  }
-
-  .restock-stock-details {
-    display: grid;
-    gap: 9px;
-    margin: 0 0 20px;
-  }
-
-  .restock-stock-details div {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    color: #555555;
-    font-size: 13px;
-  }
-
-  .restock-stock-details dt,
-  .restock-stock-details dd {
-    margin: 0;
-  }
-
-  .restock-stock-details dd {
-    color: var(--text);
-    font-weight: 700;
-    text-align: right;
-  }
-
-  .restock-quantity-label {
-    display: block;
-    margin-bottom: 7px;
-    color: var(--green-dark);
-    font-size: 13px;
-    font-weight: 700;
-  }
-
-  .restock-quantity-input {
-    width: 100%;
-    padding: 11px 12px;
-    border: 2px solid var(--green-mid);
-    border-radius: 6px;
-    color: #000000;
-    font-size: 14px;
-  }
-
-  .restock-quantity-input:focus {
-    outline: none;
-    border-color: var(--green);
-    box-shadow: 0 0 0 3px rgba(14, 138, 58, 0.14);
-  }
-
-  .restock-validation {
-    min-height: 18px;
-    margin-top: 6px;
-    color: var(--red);
-    font-size: 12px;
-  }
-
-  .restock-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 18px;
-  }
-
-  .restock-dialog-actions .btn {
-    width: auto;
-    min-width: 116px;
-    margin: 0;
-  }
-
-  .restock-dialog-actions .btn.cancel {
-    border-color: var(--green-mid);
-    color: var(--green-dark);
-  }
-
-  .restock-toast {
-    position: fixed;
-    right: 20px;
-    bottom: 46px;
-    z-index: 1001;
-    max-width: min(420px, calc(100vw - 40px));
-    padding: 12px 16px;
-    border: 1px solid var(--green);
-    border-radius: 8px;
-    background: var(--green-dark);
-    color: var(--white);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-    font-size: 13px;
-  }
-
-  .restock-toast[hidden] {
-    display: none;
-  }
-
-  @media (max-width: 480px) {
-    .restock-dialog-header,
-    .restock-dialog-body {
-      padding: 16px;
-    }
-
-    .restock-dialog-actions {
-      flex-direction: column-reverse;
-    }
-
-    .restock-dialog-actions .btn {
-      width: 100%;
-    }
-
-    .restock-toast {
-      right: 12px;
-      bottom: 40px;
-      max-width: calc(100vw - 24px);
-    }
-  }
-</style>
 </head>
 <body>
 <div class="titlebar">
@@ -191,6 +17,7 @@
     <h3>Navigation</h3>
     <div id="nav-books" class="nav-item active" onclick="showView('books')">📖 CELTECH Books</div>
     <div id="nav-requests" class="nav-item" onclick="showView('requests')">📋 Student / Teacher Requests</div>
+    <div id="nav-settings" class="nav-item" onclick="showView('settings')">⚙️ Settings</div>
     <div id="nav-about" class="nav-item" onclick="showView('about')">🏫 About Library</div>
 
     <div class="admin-profile-section">
@@ -214,41 +41,55 @@
   <span style="margin-left:auto">CELTECH All Green Theme | Admin</span>
 </div>
 
-<dialog id="restockDialog" class="restock-dialog" aria-labelledby="restockTitle">
+<dialog id="restockDialog" class="library-dialog" aria-labelledby="restockTitle">
   <form id="restockForm" novalidate>
-    <div class="restock-dialog-header">
+    <div class="library-dialog-header">
       <h2 id="restockTitle">Restock Book</h2>
-      <button class="restock-dialog-close" type="button" aria-label="Close restock dialog"
+      <button class="library-dialog-close" type="button" aria-label="Close restock dialog"
         onclick="closeRestockDialog()">&times;</button>
     </div>
-    <div class="restock-dialog-body">
+    <div class="library-dialog-body">
       <p id="restockBookTitle" class="restock-book-title"></p>
-      <dl class="restock-stock-details">
+      <dl class="library-dialog-details">
         <div><dt>Current Stock</dt><dd id="restockCurrentStock"></dd></div>
         <div><dt>Available Stock</dt><dd id="restockAvailableStock"></dd></div>
         <div><dt>Reserved</dt><dd id="restockReservedStock"></dd></div>
       </dl>
-      <label class="restock-quantity-label" for="restockQuantity">Quantity to Add</label>
-      <input id="restockQuantity" class="restock-quantity-input" type="number" min="1" step="1"
+      <label class="library-dialog-label" for="restockQuantity">Quantity to Add</label>
+      <input id="restockQuantity" class="library-dialog-input" type="number" min="1" step="1"
         inputmode="numeric" aria-describedby="restockValidation">
-      <p id="restockValidation" class="restock-validation" aria-live="polite"></p>
-      <div class="restock-dialog-actions">
+      <p id="restockValidation" class="library-dialog-validation" aria-live="polite"></p>
+      <div class="library-dialog-actions">
         <button class="btn cancel" type="button" onclick="closeRestockDialog()">Cancel</button>
         <button class="btn" type="submit">Confirm Restock</button>
       </div>
     </div>
   </form>
 </dialog>
-<div id="restockToast" class="restock-toast" role="status" aria-live="polite" hidden></div>
+
+<dialog id="manageReservationDialog" class="reservation-manage-dialog" aria-labelledby="manageReservationTitle">
+  <div class="reservation-manage-header">
+    <div>
+      <h2 id="manageReservationTitle">Manage Reservation</h2>
+      <p id="manageReservationSubtitle"></p>
+    </div>
+    <button class="library-dialog-close" type="button" aria-label="Close reservation details"
+      onclick="closeManageReservationDialog()">&times;</button>
+  </div>
+  <div id="manageReservationContent" class="reservation-manage-content"></div>
+  <div id="manageReservationActions" class="reservation-manage-actions"></div>
+</dialog>
 
 <script src="books-data.js"></script>
 <script src="library-storage.js"></script>
+<script src="library-ui.js"></script>
 <script>
 let currentView = 'books';
 let currentCategory = 'All';
 let searchText = '';
 let restockBookId = null;
-let restockToastTimeout;
+let requestSearch = '';
+let requestStatusFilter = 'All';
 const categories = ['All', 'BSIT Major', 'GenEd', 'Thesis'];
 
 function updateProfile() {
@@ -284,16 +125,16 @@ function renderBooks(content) {
     (!query || book.title.toLowerCase().includes(query) || book.author.toLowerCase().includes(query))
   );
 
-  content.innerHTML = `
+  content.insertAdjacentHTML('beforeend', `
     <h3 style="color:#0a5e28">CELTECH Library Catalog — ${filtered.length} Books</h3>
     <div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">
       ${categories.map(category => `
         <button class="category-filter" type="button" aria-pressed="${currentCategory === category}"
-          onclick="filterCategory('${category}')">${category}</button>
+          data-category="${escapeHtml(category)}" onclick="filterCategory(this.dataset.category)">${category}</button>
       `).join('')}
     </div>
     <input id="searchInput" class="search" value="${escapeHtml(searchText)}"
-      placeholder="Search CELTECH Books..." oninput="searchText=this.value;render()">
+      placeholder="Search CELTECH Books..." oninput="updateBookSearch(this)">
     <div class="book-grid">
       ${filtered.map(book => {
         const reserved = getBookReservationCount(book.id);
@@ -312,14 +153,14 @@ function renderBooks(content) {
         `;
       }).join('')}
     </div>
-  `;
+  `);
 }
 
 function restock(bookId) {
   refreshLibraryData();
   const book = books.find(item => item.id === Number(bookId));
   if (!book) {
-    showRestockToast('Book not found.');
+    showRestockToast('Book not found.', 'error');
     return;
   }
 
@@ -340,20 +181,17 @@ function closeRestockDialog() {
   document.getElementById('restockDialog').close();
 }
 
-function showRestockToast(message) {
-  const toast = document.getElementById('restockToast');
-  toast.textContent = message;
-  toast.hidden = false;
-  window.clearTimeout(restockToastTimeout);
-  restockToastTimeout = window.setTimeout(() => { toast.hidden = true; }, 3500);
+function showRestockToast(message, type = 'success') {
+  showLibraryToast(message, type);
 }
 
 function submitRestock(event) {
   event.preventDefault();
   const quantityInput = document.getElementById('restockQuantity');
+  const rawQuantity = quantityInput.value.trim();
   const quantity = quantityInput.valueAsNumber;
   const validation = document.getElementById('restockValidation');
-  if (!Number.isSafeInteger(quantity) || quantity <= 0) {
+  if (!/^\d+$/.test(rawQuantity) || !Number.isSafeInteger(quantity) || quantity <= 0) {
     validation.textContent = 'Enter a positive whole-number quantity.';
     quantityInput.setAttribute('aria-invalid', 'true');
     quantityInput.focus();
@@ -370,6 +208,7 @@ function submitRestock(event) {
     validation.textContent = error.message;
     quantityInput.setAttribute('aria-invalid', 'true');
     quantityInput.focus();
+    showRestockToast(error.message, 'error');
   }
 }
 
@@ -387,63 +226,393 @@ document.getElementById('restockDialog').addEventListener('close', () => {
   restockBookId = null;
 });
 
+function updateBookSearch(input) {
+  searchText = input.value;
+  const cursor = input.selectionStart;
+  render();
+  const updatedInput = document.getElementById('searchInput');
+  updatedInput.focus();
+  updatedInput.setSelectionRange(cursor, cursor);
+}
+
 function renderRequests(content) {
-  content.innerHTML = `
-    <h3 style="color:#0a5e28">Student / Teacher Requests — ${reservations.length} Active</h3>
-    ${reservations.length === 0
-      ? '<p style="color:#888;margin-top:20px">No active reservations.</p>'
+  const statuses = [
+    PENDING_STATUS, APPROVED_STATUS, BORROWED_STATUS, DUE_SOON_STATUS,
+    OVERDUE_STATUS, DECLINED_STATUS, CANCELLED_STATUS, RETURNED_STATUS
+  ];
+  const query = requestSearch.toLowerCase();
+  const filtered = reservations.filter(reservation => {
+    const book = books.find(item => item.id === reservation.bookId);
+    const matchesStatus = requestStatusFilter === 'All' || reservation.status === requestStatusFilter;
+    const haystack = [
+      reservation.userName, reservation.userId, reservation.userRole,
+      reservation.title, reservation.shelf, book && book.title
+    ].join(' ').toLowerCase();
+    return matchesStatus && (!query || haystack.includes(query));
+  });
+  const overdueCount = reservations.filter(reservation => reservation.status === OVERDUE_STATUS).length;
+
+  content.insertAdjacentHTML('beforeend', `
+    <h3 style="color:#0a5e28">Student / Teacher Requests</h3>
+    ${overdueNotificationMode === 'banner' && overdueCount > 0
+      ? `<p class="overdue-notice" role="status">${overdueCount} reservation${overdueCount === 1 ? '' : 's'} overdue. Review the overdue requests below.</p>`
+      : ''}
+    <div class="request-controls">
+      <input class="search" aria-label="Search requests" placeholder="Search by person, ID, or book..."
+        value="${escapeHtml(requestSearch)}" oninput="updateRequestSearch(this)">
+      <select class="request-filter" aria-label="Filter by status" onchange="requestStatusFilter=this.value;render()">
+        <option value="All">All statuses</option>
+        ${statuses.map(status => `<option value="${escapeHtml(status)}" ${requestStatusFilter === status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}
+      </select>
+    </div>
+    ${filtered.length === 0
+      ? '<p style="color:#888;margin-top:20px">No matching reservations.</p>'
       : `
         <div class="request-table-wrap">
           <table class="request-table">
-            <thead>
-              <tr>
-                <th>Student/Teacher Name</th>
-                <th>User ID</th>
-                <th>Role</th>
-                <th>Book Title</th>
-                <th>Reservation Date</th>
-                <th>Book Shelf</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th>Student / Teacher</th><th>Book Title</th><th>Pickup Schedule</th>
+              <th>Return Due</th><th>Remaining Time</th><th>Status</th><th>Actions</th>
+            </tr></thead>
             <tbody>
-              ${reservations.map(reservation => {
-                const book = books.find(item => item.id === reservation.bookId);
-                return `
-                  <tr>
-                    <td>${escapeHtml(reservation.userName)}</td>
-                    <td>${escapeHtml(reservation.userId || '—')}</td>
-                    <td>${escapeHtml(reservation.userRole)}</td>
-                    <td>${escapeHtml(book ? book.title : reservation.title || 'Unknown book')}</td>
-                    <td>${escapeHtml(reservation.date)}</td>
-                    <td>${escapeHtml(book ? book.shelf : reservation.shelf || '—')}</td>
-                    <td>${escapeHtml(reservation.status)}</td>
-                    <td><button class="btn cancel" type="button"
+              ${filtered.map(reservation => `
+                <tr>
+                  <td data-label="Student / Teacher">${escapeHtml(reservation.userName)}<span class="request-secondary">${escapeHtml(reservation.userRole)}</span></td>
+                  <td data-label="Book Title">${escapeHtml(reservation.title)}<span class="request-secondary">Shelf: ${escapeHtml(reservation.shelf)}</span></td>
+                  <td data-label="Pickup Schedule">${formatManilaDateTime(reservation.confirmedPickupAt || reservation.preferredPickupAt)}
+                    <span class="request-secondary">${reservation.confirmedPickupAt ? 'Confirmed' : 'Requested'}</span></td>
+                  <td data-label="Return Due">${formatManilaDateTime(reservation.dueAt)}</td>
+                  <td data-label="Remaining Time">${reservation.dueAt && HELD_STATUSES.has(reservation.status)
+                    ? `<span data-countdown="${escapeHtml(reservation.dueAt)}">${formatRemainingTime(reservation.dueAt)}</span>`
+                    : '—'}</td>
+                  <td data-label="Status"><span class="reservation-status ${reservation.status === OVERDUE_STATUS ? 'overdue' : reservation.status === DECLINED_STATUS || reservation.status === CANCELLED_STATUS ? 'declined' : ''}">${escapeHtml(reservation.status)}</span></td>
+                  <td data-label="Actions" class="request-actions">
+                    <button class="btn request-manage-button" type="button"
                       data-reservation-id="${escapeHtml(reservation.reservationId)}"
-                      onclick="cancelRequest(this.dataset.reservationId)">Cancel</button></td>
-                  </tr>
-                `;
-              }).join('')}
+                      onclick="openManageReservationDialog(this.dataset.reservationId, this)">Manage</button>
+                  </td>
+                </tr>
+              `).join('')}
             </tbody>
           </table>
         </div>
       `}
-  `;
+    <section class="activity-list">
+      <h4>Borrowing Activity History</h4>
+      ${renderActivityHistory()}
+    </section>
+  `);
 }
 
-function cancelRequest(reservationId) {
-  if (!confirm('Cancel this reservation?')) return;
-  if (!cancelReservation(reservationId)) {
-    alert('Reservation could not be cancelled.');
+function renderActivityHistory() {
+  const activity = getLibraryActivity().slice().reverse();
+  if (!activity.length) return '<p class="meta">No activity recorded yet.</p>';
+  return `<div class="activity-cards">${activity.map(item => `
+    <article class="activity-card">
+      <strong>${escapeHtml(item.action)}</strong>
+      <span>${escapeHtml(item.bookTitle)} · ${escapeHtml(item.userName)}</span>
+      <span>${formatManilaDateTime(item.timestamp)}${item.adminName ? ` · Admin: ${escapeHtml(item.adminName)}` : ''}</span>
+      <small>Reservation #${escapeHtml(item.reservationId)}</small>
+    </article>
+  `).join('')}</div>`;
+}
+
+let manageDialogOpener = null;
+
+function renderManagementDetails(title, details) {
+  return `<section class="manage-info-section">
+    <h3>${title}</h3>
+    <dl>${details.map(([label, value]) => `
+      <div><dt>${label}</dt><dd>${escapeHtml(value || '—')}</dd></div>
+    `).join('')}</dl>
+  </section>`;
+}
+
+function renderManagementActions(reservation) {
+  const id = escapeHtml(reservation.reservationId);
+  if (reservation.status === PENDING_STATUS) {
+    return `
+      <button class="btn manage-action-primary" type="button" data-manage-action="approve" data-reservation-id="${id}">Approve</button>
+      <button class="btn manage-action-danger" type="button" data-manage-action="decline" data-reservation-id="${id}">Decline</button>`;
+  }
+  if (reservation.status === APPROVED_STATUS) {
+    return `
+      <button class="btn manage-action-secondary" type="button" data-manage-action="reschedule" data-reservation-id="${id}">Update Pickup Schedule</button>
+      <button class="btn manage-action-primary" type="button" data-manage-action="pickup" data-reservation-id="${id}">Mark as Picked Up</button>`;
+  }
+  if ([BORROWED_STATUS, DUE_SOON_STATUS].includes(reservation.status)) {
+    return `<button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Return</button>`;
+  }
+  if (reservation.status === OVERDUE_STATUS) {
+    return `
+      <button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Return</button>
+      <button class="btn manage-action-secondary" type="button" disabled title="Record the book return before resolving its penalty.">Resolve Penalty</button>
+      <span class="manage-action-note">Penalty resolution is available after the return is recorded.</span>`;
+  }
+  if (reservation.status === RETURNED_STATUS) {
+    return `
+      <button class="btn manage-action-secondary" type="button" data-manage-action="history" data-reservation-id="${id}">View Borrowing History</button>
+      ${reservation.penaltyStatus === 'Unresolved' ? `
+        <button class="btn manage-action-primary" type="button" data-manage-action="paid" data-reservation-id="${id}">Mark Penalty Paid</button>
+        <button class="btn manage-action-danger" type="button" data-manage-action="waive" data-reservation-id="${id}">Waive Penalty</button>
+      ` : ''}`;
+  }
+  return '';
+}
+
+function openManageReservationDialog(reservationId, opener = null) {
+  const reservation = getReservation(reservationId);
+  if (!reservation) {
+    showLibraryToast('Reservation not found.', 'error');
     return;
   }
-  document.getElementById('statusMsg').textContent = '| Reservation cancelled';
+  manageDialogOpener = opener;
+  const book = books.find(item => item.id === reservation.bookId) || reservation;
+  const remaining = reservation.dueAt && HELD_STATUSES.has(reservation.status)
+    ? formatRemainingTime(reservation.dueAt)
+    : '—';
+  const penaltyRelevant = reservation.penaltyStatus !== 'No Penalty' ||
+    [OVERDUE_STATUS, RETURNED_STATUS].includes(reservation.status);
+  const penaltyAmount = reservation.penaltyAmount ??
+    (reservation.status === OVERDUE_STATUS ? getPenaltyAmount() : null);
+  const history = getLibraryActivity()
+    .filter(item => item.reservationId === reservation.reservationId)
+    .slice()
+    .reverse();
+
+  document.getElementById('manageReservationSubtitle').textContent =
+    `${reservation.title} · ${reservation.userName}`;
+  document.getElementById('manageReservationContent').innerHTML = `
+    <div class="manage-info-grid">
+      ${renderManagementDetails('Student / Teacher', [
+        ['Full name', reservation.userName],
+        ['User ID', reservation.userId || 'Not provided'],
+        ['Role', reservation.userRole]
+      ])}
+      ${renderManagementDetails('Book Information', [
+        ['Book title', book.title],
+        ['Author', book.author],
+        ['Category', book.category],
+        ['Shelf location', book.shelf]
+      ])}
+      ${renderManagementDetails('Reservation Information', [
+        ['Reservation ID', reservation.reservationId],
+        ['Reservation date', formatManilaDateTime(reservation.requestCreatedAt)],
+        ['Preferred pickup date and time', formatManilaDateTime(reservation.preferredPickupAt)],
+        ['Confirmed pickup schedule', formatManilaDateTime(reservation.confirmedPickupAt)],
+        ['Actual pickup timestamp', formatManilaDateTime(reservation.pickedUpAt)],
+        ['Return due date', formatManilaDateTime(reservation.dueAt)],
+        ['Remaining time', remaining],
+        ['Current status', reservation.status]
+      ])}
+      ${penaltyRelevant ? renderManagementDetails('Penalty Information', [
+        ['Penalty amount', penaltyAmount == null ? '—' : `₱${Number(penaltyAmount).toLocaleString('en-PH')}`],
+        ['Penalty status', reservation.penaltyStatus],
+        ['Resolution', [
+          reservation.penaltyResolutionAt && formatManilaDateTime(reservation.penaltyResolutionAt),
+          reservation.penaltyResolutionReason
+        ].filter(Boolean).join(' — ') || '—']
+      ]) : ''}
+    </div>
+    <section id="manageBorrowingHistory" class="manage-history" hidden>
+      <h3>Borrowing History</h3>
+      ${history.length ? `<ol>${history.map(item => `
+        <li><strong>${escapeHtml(item.action)}</strong>
+          <span>${formatManilaDateTime(item.timestamp)}${item.adminName ? ` · ${escapeHtml(item.adminName)}` : ''}</span>
+        </li>
+      `).join('')}</ol>` : '<p>No activity recorded for this reservation.</p>'}
+    </section>
+  `;
+  document.getElementById('manageReservationActions').innerHTML = `
+    ${renderManagementActions(reservation)}
+    <button class="btn manage-action-secondary manage-close-button" type="button"
+      onclick="closeManageReservationDialog()">Close</button>`;
+  document.getElementById('manageReservationDialog').showModal();
+}
+
+function closeManageReservationDialog() {
+  const dialog = document.getElementById('manageReservationDialog');
+  if (dialog.open) dialog.close();
+}
+
+document.getElementById('manageReservationActions').addEventListener('click', event => {
+  const button = event.target.closest('[data-manage-action]');
+  if (!button || button.disabled) return;
+
+  const action = button.dataset.manageAction;
+  const reservationId = button.dataset.reservationId;
+  if (action === 'history') {
+    const history = document.getElementById('manageBorrowingHistory');
+    history.hidden = !history.hidden;
+    button.textContent = history.hidden ? 'View Borrowing History' : 'Hide Borrowing History';
+    return;
+  }
+
+  closeManageReservationDialog();
+  if (action === 'approve') openApproveDialog(reservationId);
+  else if (action === 'decline') openDeclineDialog(reservationId);
+  else if (action === 'reschedule') openPickupScheduleDialog(reservationId);
+  else if (action === 'pickup') markPickedUp(reservationId);
+  else if (action === 'return') confirmReturn(reservationId);
+  else if (action === 'paid') resolvePenalty(reservationId, 'Paid');
+  else if (action === 'waive') openWaivePenaltyDialog(reservationId);
+});
+
+document.getElementById('manageReservationDialog').addEventListener('close', () => {
+  if (manageDialogOpener && manageDialogOpener.isConnected) manageDialogOpener.focus();
+  manageDialogOpener = null;
+});
+
+function updateRequestSearch(input) {
+  requestSearch = input.value;
+  const cursor = input.selectionStart;
   render();
+  const updatedInput = document.querySelector('.request-controls .search');
+  updatedInput.focus();
+  updatedInput.setSelectionRange(cursor, cursor);
+}
+
+function getManilaScheduleFields(value) {
+  if (!value) return getManilaDateTimeParts(new Date(Date.now() + 86400000));
+  const date = new Date(value);
+  return getManilaDateTimeParts(date);
+}
+
+function openApproveDialog(reservationId) {
+  const reservation = getReservation(reservationId);
+  if (!reservation) return;
+  const schedule = getManilaScheduleFields(reservation.preferredPickupAt);
+  openLibraryDialog({
+    title: 'Approve Reservation',
+    description: 'Confirm or adjust the pickup schedule in Asia/Manila time.',
+    details: [
+      { label: 'Student/Teacher', value: `${reservation.userName} (${reservation.userRole})` },
+      { label: 'Book', value: reservation.title }
+    ],
+    fields: [
+      { name: 'pickupDate', label: 'Confirmed pickup date', type: 'date', min: getManilaDateTimeParts().date, value: schedule.date, required: true },
+      { name: 'pickupTime', label: 'Confirmed pickup time', type: 'time', value: schedule.time, required: true }
+    ],
+    confirmText: 'Approve Request',
+    onConfirm(values) {
+      approveReservation(reservationId, parseManilaDateTime(values.pickupDate, values.pickupTime), getCurrentUser());
+      render();
+    },
+    successMessage: 'Reservation approved and pickup schedule confirmed.'
+  });
+}
+
+function openPickupScheduleDialog(reservationId) {
+  const reservation = getReservation(reservationId);
+  if (!reservation) return;
+  const schedule = getManilaScheduleFields(reservation.confirmedPickupAt);
+  openLibraryDialog({
+    title: 'Update Pickup Schedule',
+    description: 'Set a new pickup schedule in Asia/Manila time.',
+    fields: [
+      { name: 'pickupDate', label: 'Pickup date', type: 'date', min: getManilaDateTimeParts().date, value: schedule.date, required: true },
+      { name: 'pickupTime', label: 'Pickup time', type: 'time', value: schedule.time, required: true }
+    ],
+    confirmText: 'Save Schedule',
+    onConfirm(values) {
+      updatePickupSchedule(reservationId, parseManilaDateTime(values.pickupDate, values.pickupTime), getCurrentUser());
+      render();
+    },
+    successMessage: 'Pickup schedule updated.'
+  });
+}
+
+function openDeclineDialog(reservationId) {
+  openLibraryDialog({
+    title: 'Decline Reservation',
+    description: 'The request will be declined and its reserved copy released. A reason is optional.',
+    fields: [{ name: 'reason', label: 'Reason (optional)', type: 'textarea', rows: 3 }],
+    confirmText: 'Decline Request',
+    onConfirm(values) {
+      declineReservation(reservationId, values.reason, getCurrentUser());
+      render();
+    },
+    successMessage: 'Reservation declined.'
+  });
+}
+
+function markPickedUp(reservationId) {
+  openLibraryDialog({
+    title: 'Confirm Book Pickup',
+    description: 'Confirm that the student/teacher has physically received the book. This starts the borrowing timer.',
+    confirmText: 'MARK AS PICKED UP',
+    onConfirm() {
+      markReservationPickedUp(reservationId, getCurrentUser());
+      render();
+    },
+    successMessage: 'Pickup recorded. The borrowing countdown has started.'
+  });
+}
+
+function confirmReturn(reservationId) {
+  openLibraryDialog({
+    title: 'Confirm Physical Return',
+    description: 'Confirm that the physical book has been returned to the library.',
+    confirmText: 'CONFIRM RETURN',
+    onConfirm() {
+      confirmReservationReturned(reservationId, getCurrentUser());
+      render();
+    },
+    successMessage: 'Book return recorded.'
+  });
+}
+
+function resolvePenalty(reservationId, resolution, reason = '') {
+  try {
+    resolveReservationPenalty(reservationId, resolution, reason, getCurrentUser());
+    render();
+    showLibraryToast(`Penalty marked ${resolution.toLowerCase()}.`);
+  } catch (error) {
+    showLibraryToast(error.message, 'error');
+  }
+}
+
+function openWaivePenaltyDialog(reservationId) {
+  openLibraryDialog({
+    title: 'Waive Penalty',
+    description: 'Add an optional reason for waiving this penalty.',
+    fields: [{ name: 'reason', label: 'Reason (optional)', type: 'textarea', rows: 3 }],
+    confirmText: 'Waive Penalty',
+    onConfirm(values) {
+      resolveReservationPenalty(reservationId, 'Waived', values.reason, getCurrentUser());
+      render();
+    },
+    successMessage: 'Penalty waived.'
+  });
+}
+
+function saveAdminSettings() {
+  const hoursInput = document.getElementById('borrowingDuration');
+  const amountInput = document.getElementById('penaltyAmount');
+  const thresholdInput = document.getElementById('dueSoonThreshold');
+  const hoursText = hoursInput.value.trim();
+  const amountText = amountInput.value.trim();
+  const thresholdText = thresholdInput.value.trim();
+  const hours = Number(hoursText);
+  const amount = Number(amountText);
+  const threshold = Number(thresholdText);
+  if (!/^\d+$/.test(hoursText) || !Number.isSafeInteger(hours) || hours <= 0 ||
+      !/^\d+$/.test(amountText) || !Number.isSafeInteger(amount) ||
+      !/^\d+$/.test(thresholdText) || !Number.isSafeInteger(threshold)) {
+    showLibraryToast('Enter valid whole-number settings. Duration must be positive; amounts and warning threshold cannot be negative.', 'error');
+    return;
+  }
+  try {
+    saveLibrarySettings(hours, amount, threshold, document.getElementById('overdueNotificationMode').value);
+    render();
+    showLibraryToast('Library settings saved.');
+  } catch (error) {
+    showLibraryToast(error.message, 'error');
+  }
 }
 
 function renderAbout(content) {
-  content.innerHTML = `
+  content.insertAdjacentHTML('beforeend', `
     <h3 style="color:#0a5e28">🏫 About CELTECH Library</h3>
     <div style="margin-top:15px;line-height:1.8;font-size:13px;background:#fff;padding:18px;border-radius:8px;border:2px solid #0e8a3a">
       <b>School:</b> Celtech College Olongapo (All Green)<br>
@@ -456,20 +625,77 @@ function renderAbout(content) {
       </span><br><br>
       <span style="color:#888">// Student project — BSIT Final</span>
     </div>
-  `;
+  `);
+}
+
+function renderSummary() {
+  const counts = [
+    { label: 'Pending Requests', status: PENDING_STATUS },
+    { label: 'Approved / Ready for Pickup', status: APPROVED_STATUS },
+    { label: 'Currently Borrowed', status: BORROWED_STATUS },
+    { label: 'Due Soon', status: DUE_SOON_STATUS },
+    { label: 'Overdue', status: OVERDUE_STATUS },
+    { label: 'Returned', status: RETURNED_STATUS }
+  ];
+  return `<div class="reservation-summary">
+    ${counts.map(item => `
+      <div class="reservation-summary-card">
+        <strong>${reservations.filter(reservation => reservation.status === item.status).length}</strong>
+        <span>${item.label}</span>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function renderSettings(content) {
+  content.insertAdjacentHTML('beforeend', `
+    <h3 class="admin-page-title">Settings</h3>
+    <form class="admin-settings-page" onsubmit="event.preventDefault();saveAdminSettings()">
+      <section class="settings-section">
+        <h4>Borrowing Rules</h4>
+        <p>Changes apply to books marked as picked up from now on. Existing return deadlines remain unchanged.</p>
+        <label for="borrowingDuration">Default borrowing duration (hours)</label>
+        <input id="borrowingDuration" type="number" min="1" step="1" value="${getBorrowingDurationHours()}" required>
+      </section>
+      <section class="settings-section">
+        <h4>Penalty Configuration</h4>
+        <p>Future overdue records use this amount. Existing penalty amounts are retained.</p>
+        <label for="penaltyAmount">Penalty amount in PHP <span class="demo-label">DEMO PLACEHOLDER</span></label>
+        <input id="penaltyAmount" type="number" min="0" step="1" value="${getPenaltyAmount()}" required>
+      </section>
+      <section class="settings-section">
+        <h4>Return Notifications</h4>
+        <label for="dueSoonThreshold">Due-soon notification threshold (hours)</label>
+        <input id="dueSoonThreshold" type="number" min="0" step="1" value="${getDueSoonThresholdHours()}" required>
+        <label for="overdueNotificationMode">Overdue notification behavior</label>
+        <select id="overdueNotificationMode">
+          <option value="banner" ${getOverdueNotificationMode() === 'banner' ? 'selected' : ''}>Show an overdue banner on Requests</option>
+          <option value="status-only" ${getOverdueNotificationMode() === 'status-only' ? 'selected' : ''}>Show overdue status only</option>
+        </select>
+      </section>
+      <button class="btn settings-save" type="submit">Save Settings</button>
+    </form>
+  `);
 }
 
 function render() {
   refreshLibraryData();
   const content = document.getElementById('content');
+  content.innerHTML = currentView === 'settings' ? '' : renderSummary();
   if (currentView === 'books') renderBooks(content);
   else if (currentView === 'requests') renderRequests(content);
+  else if (currentView === 'settings') renderSettings(content);
   else renderAbout(content);
 }
 
 if (requireDashboardRole('admin')) {
   updateProfile();
+  subscribeToLibraryUpdates(render);
   render();
+  window.setInterval(() => {
+    refreshLibraryData();
+    render();
+  }, 60000);
 }
 </script>
 </body>

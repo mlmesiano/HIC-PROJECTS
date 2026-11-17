@@ -16,6 +16,9 @@ A web-based library reservation and inventory management system for CELTECH Coll
 - Book Inventory and Restocking
 - Reservation Management
 - Borrowing and Return Monitoring
+- Pickup scheduling, due-date reminders, and overdue tracking
+- Penalty resolution and borrowing activity history
+- Admin settings for borrowing rules and return notifications
 
 ## Technologies Used
 
