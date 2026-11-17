@@ -119,6 +119,10 @@ body {
   text-transform: uppercase;
 }
 
+.admin-profile-section {
+  margin-top: 10px;
+}
+
 /* Sidebar navigation links */
 
 .nav-item {
@@ -140,6 +144,23 @@ body {
   border-left-color: var(--yellow);
   color: var(--white);
   font-weight: bold;
+}
+
+.category-filter {
+  padding: 6px 14px;
+  border: 2px solid var(--green-mid);
+  border-radius: 20px;
+  background: var(--white);
+  color: var(--green-dark);
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.category-filter[aria-pressed="true"] {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--white);
 }
 
 /* ========================================
@@ -358,6 +379,44 @@ body {
   border-radius: 6px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
   font-size: 13px;
+}
+
+.request-table-wrap {
+  width: 100%;
+  margin-top: 15px;
+  overflow-x: auto;
+  background: var(--white);
+  border: 1px solid var(--green-mid);
+  border-radius: 8px;
+}
+
+.request-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.request-table th,
+.request-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--green-mid);
+  white-space: nowrap;
+}
+
+.request-table th {
+  background: var(--green-light);
+  color: var(--green-dark);
+}
+
+.request-table tr:last-child td {
+  border-bottom: none;
+}
+
+.request-table .btn {
+  width: auto;
+  margin: 0;
+  padding: 6px 10px;
 }
 
 /* ========================================

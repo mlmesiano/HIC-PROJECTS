@@ -41,20 +41,16 @@
 </div>
 
 <script src="books-data.js"></script>
+<script src="library-storage.js"></script>
 <script>
   
 
-let reservations = JSON.parse(localStorage.getItem('celtech_final')||'[]');
-let currentView='books'; let currentCat='All';
+let currentView='books'; let currentCat='All'; let currentSearch='';
 const categories=['All','BSIT Major','GenEd','Thesis'];
 
 
 function updateProfile(){
-  let u = null;
-  try { u = JSON.parse(localStorage.getItem('celtech_user')); } catch(e){}
-
-  // not logged in -> send back to the login page
-  if(!u){ window.location.href = 'login.html'; return; }
+  const u = getCurrentUser();
 
   const role  = u.role || 'student';
   const label = role.charAt(0).toUpperCase() + role.slice(1);                 // "Student" / "Teacher" / "Admin"
@@ -82,6 +78,7 @@ function showView(v){
 function filterCat(c){currentCat=c;render();}
 
 function render() {
+  refreshLibraryData();
   const content = document.getElementById('content');
 
   if (currentView === 'books') {
@@ -89,8 +86,7 @@ function render() {
       ? books
       : books.filter(b => b.category === currentCat);
 
-    const searchInput = document.getElementById('searchInput');
-    const s = searchInput ? searchInput.value.toLowerCase() : '';
+    const s = currentSearch.toLowerCase();
 
     if (s) {
       filtered = filtered.filter(b => b.title.toLowerCase().includes(s));
@@ -109,16 +105,18 @@ function render() {
       </div>
 
       <input id="searchInput" class="search"
+        value="${escapeHtml(currentSearch)}"
         placeholder="Search CELTECH Books..."
-        oninput="render()">
+        oninput="currentSearch=this.value;render()">
 
       <div class="book-grid">
         ${filtered.map(b => {
-          const reservedCount = reservations.filter(r => r.id === b.id).length;
-          const available = b.copies - reservedCount;
-          const isMine = reservations.some(r => r.id === b.id);
+          const user = getCurrentUser();
+          const reservedCount = getBookReservationCount(b.id);
+          const available = getAvailableCopies(b.id);
+          const isMine = getUserReservations(user).some(r => r.bookId === b.id);
 
-          const disabled = available <= 0 || isMine || reservations.length >= 3;
+          const disabled = available <= 0 || isMine || getUserReservations(user).length >= 3;
 
           return `
             <div class="book">
@@ -139,37 +137,34 @@ function render() {
     `;
 
   } else if (currentView === 'my') {
-    const u = JSON.parse(localStorage.getItem('celtech_user') || 'null');
-
-    if (!u) {
-      content.innerHTML = '<p>Please log in first.</p>';
-      return;
-    }
+    const u = getCurrentUser();
+    const userReservations = getUserReservations(u);
+    const userId = u.id || u.name;
 
     content.innerHTML = `
-      <h3 style="color:#0a5e28">📖 My Reservations — ID: ${u.id}</h3>
+      <h3 style="color:#0a5e28">📖 My Reservations — ID: ${escapeHtml(userId)}</h3>
       <p style="font-size:12px;color:#555;margin:8px 0">
-        Present ID ${u.id} at 2nd Floor Library to claim.
+        Present ID ${escapeHtml(userId)} at 2nd Floor Library to claim.
       </p>
 
-      ${reservations.length === 0
+      ${userReservations.length === 0
         ? '<p style="color:#888;margin-top:20px">No reservations yet. Go to CELTECH Books.</p>'
-        : reservations.map(r => {
+        : userReservations.map(r => {
             const due = new Date();
             due.setDate(due.getDate() + 7);
 
             return `
               <div class="res-item">
                 <div>
-                  <b>${r.title}</b>
-                  <span style="background:#0e8a3a;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">${r.shelf}</span>
+                  <b>${escapeHtml(r.title)}</b>
+                  <span style="background:#0e8a3a;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">${escapeHtml(r.shelf)}</span>
                   <br>
                   <span style="color:#666">
-                    Reserved: ${r.date} | Due: ${due.toLocaleDateString()} | ID: ${r.studentId}
+                    Reserved: ${escapeHtml(r.date)} | Due: ${due.toLocaleDateString()} | ID: ${escapeHtml(r.userId || r.studentId || userId)}
                   </span>
                 </div>
                 <button class="btn cancel" style="width:auto"
-                  onclick="cancel(${r.id})">Cancel</button>
+                  onclick="cancel('${r.reservationId}')">Cancel</button>
               </div>
             `;
           }).join('')
@@ -194,46 +189,25 @@ function render() {
   }
 }
 function reserve(id) {
-  const u = JSON.parse(localStorage.getItem('celtech_user') || 'null');
-
-  if (!u) {
-    alert('Please log in first.');
-    return;
+  try {
+    reserveBook(id, getCurrentUser());
+    render();
+  } catch (error) {
+    alert(error.message);
   }
-
-  if (reservations.length >= 3) {
-    alert('Maximum of 3 reservations.');
-    return;
-  }
-
-  const b = books.find(x => x.id === id);
-  if (!b || b.copies <= reservations.filter(r => r.id === id).length) {
-    alert('This book is unavailable.');
-    return;
-  }
-
-  if (reservations.some(r => r.id === id)) {
-    alert('You already reserved this book.');
-    return;
-  }
-
-  reservations.push({
-    ...b,
-    date: new Date().toLocaleDateString(),
-    studentId: u.id
-  });
-
-  localStorage.setItem('celtech_final', JSON.stringify(reservations));
-  render();
 }
 
-function cancel(id) {
-  reservations = reservations.filter(r => r.id !== id);
-  localStorage.setItem('celtech_final', JSON.stringify(reservations));
+function cancel(reservationId) {
+  if (!cancelReservation(reservationId, getCurrentUser())) {
+    alert('Reservation could not be cancelled.');
+    return;
+  }
   render();
 }
-updateProfile();
-render();
+if (requireDashboardRole('student')) {
+  updateProfile();
+  render();
+}
 </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const books = [
+const initialBooks = [
   {id:1,title:"Data Structures & Algorithms",author:"Goodrich",category:"BSIT Major",copies:3,shelf:"A1"},
   {id:2,title:"Computer Networking",author:"Kurose",category:"BSIT Major",copies:2,shelf:"A2"},
   {id:3,title:"Capstone Manual",author:"CELTECH Faculty",category:"Thesis",copies:5,shelf:"C1"},
