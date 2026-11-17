@@ -39,20 +39,9 @@
   <span id="statusUser">Not logged in</span><span id="statusMsg">| Ready</span><span style="margin-left:auto">CELTECH All Green Theme | ID: 202411059 format</span>
 </div>
 
+<script src="books-data.js"></script>
 <script>
   
-
-const books = [
-  {id:1,title:"Data Structures & Algorithms",author:"Goodrich",category:"BSIT Major",copies:3,shelf:"A1"},
-  {id:2,title:"Computer Networking",author:"Kurose",category:"BSIT Major",copies:2,shelf:"A2"},
-  {id:3,title:"Capstone Manual",author:"CELTECH Faculty",category:"Thesis",copies:5,shelf:"C1"},
-  {id:4,title:"Noli Me Tangere",author:"Jose Rizal",category:"GenEd",copies:4,shelf:"G1"},
-  {id:5,title:"Purposive Communication",author:"Madrunio",category:"GenEd",copies:2,shelf:"G2"},
-  {id:6,title:"Database Systems",author:"Elmasri",category:"BSIT Major",copies:1,shelf:"A3"},
-  {id:7,title:"OJT Manual",author:"CELTECH Guidance",category:"Thesis",copies:0,shelf:"C2"},
-  {id:8,title:"Web Development PHP & MySQL",author:"Welling",category:"BSIT Major",copies:2,shelf:"A4"},
-];
-
 
 let reservations = JSON.parse(localStorage.getItem('celtech_final')||'[]');
 let currentView='books'; let currentCat='All';
