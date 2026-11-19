@@ -1172,6 +1172,56 @@ function saveAdminSettings() {
   }
 }
 
+function saveAdminAccountPassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  clearAdminFormErrors(form);
+  const fields = [
+    form.elements.currentPassword,
+    form.elements.newPassword,
+    form.elements.confirmPassword
+  ];
+  const emptyFields = fields.filter(input => !input.value.trim());
+  if (emptyFields.length) {
+    setAdminFormMessage(form, 'Complete all password fields before updating.');
+    emptyFields.forEach(input => setAdminFieldError(input, 'This field is required.'));
+    emptyFields[0].focus();
+    return;
+  }
+
+  try {
+    const user = getCurrentUser();
+    if (!user || normalizeAccountRole(user.role) !== 'admin') {
+      throw new Error('Only an administrator can change this password.');
+    }
+    changeLibraryAccountPassword(
+      user,
+      fields[0].value,
+      fields[1].value,
+      fields[2].value
+    );
+    form.reset();
+    form.querySelectorAll('.library-password-toggle').forEach(button => {
+      const input = button.parentElement.querySelector('input');
+      setPasswordVisibilityIcons(input, button, false);
+    });
+    setAdminFormMessage(form, 'Password updated successfully. Use your new password the next time you log in.', 'success');
+  } catch (error) {
+    setAdminFormMessage(form, error.message);
+    const field = error.message.includes('Current password')
+      ? fields[0]
+      : error.message.includes('at least 6 characters')
+        ? fields[1]
+        : error.message.includes('do not match')
+          ? fields[2]
+          : null;
+    if (field) {
+      setAdminFieldError(field, error.message);
+      field.focus();
+    }
+  }
+}
+
 function renderAbout(content) {
   content.insertAdjacentHTML('beforeend', `
     <h3 style="color:#0a5e28">🏫 About CELTECH Library</h3>
@@ -1257,6 +1307,32 @@ function renderSettings(content) {
         </div>
       </section>
       <button class="btn settings-save" type="submit">Save Settings</button>
+    </form>
+    <form class="admin-settings-page account-password-form" novalidate
+      onsubmit="saveAdminAccountPassword(event)">
+      <section class="settings-section">
+        <h4>Change Password</h4>
+        <div class="admin-inline-message" data-admin-form-message role="alert" aria-live="polite" hidden></div>
+        <div class="admin-form-field">
+          <label for="adminCurrentPassword">Current Password</label>
+          <input id="adminCurrentPassword" name="currentPassword" type="password"
+            autocomplete="current-password" required oninput="clearAdminFieldError(this)">
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <div class="admin-form-field">
+          <label for="adminNewPassword">New Password</label>
+          <input id="adminNewPassword" name="newPassword" type="password"
+            autocomplete="new-password" minlength="6" required oninput="clearAdminFieldError(this)">
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <div class="admin-form-field">
+          <label for="adminConfirmPassword">Confirm New Password</label>
+          <input id="adminConfirmPassword" name="confirmPassword" type="password"
+            autocomplete="new-password" minlength="6" required oninput="clearAdminFieldError(this)">
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <button class="btn settings-save" type="submit">Update Password</button>
+      </section>
     </form>
   `);
 }
