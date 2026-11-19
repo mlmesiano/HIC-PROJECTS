@@ -1229,7 +1229,12 @@ body {
   font-weight: bold;
 }
 
-.available {
+.status.available {
+  display: inline-flex;
+  width: fit-content;
+  padding: 3px 7px;
+  font-size: 10px;
+  line-height: 1.2;
   background: var(--green-light);
   border: 1px solid var(--green);
   color: var(--green-dark);
