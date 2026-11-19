@@ -13,6 +13,23 @@
 <div class="titlebar">
   <img src="images.jpg" alt="CELTECH College Olongapo logo">
   <div><b> CELTECH COLLEGE OLONGAPO — Digital Library</b> | BSIT 3A Final Project</div>
+  <div class="notification-center">
+    <button id="notificationBell" class="notification-bell" type="button" aria-label="Notifications"
+      aria-expanded="false" aria-controls="notificationPanel">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+        <path d="M10 21h4"></path>
+      </svg>
+      <span id="notificationUnreadCount" class="notification-count" hidden></span>
+    </button>
+    <section id="notificationPanel" class="notification-panel" aria-label="Notifications" hidden>
+      <header class="notification-panel-header">
+        <h2>Notifications</h2>
+        <span id="notificationPanelUnreadCount">0 unread</span>
+      </header>
+      <div id="notificationItems" class="notification-items"></div>
+    </section>
+  </div>
 </div>
 
 <div class="main">
@@ -20,6 +37,7 @@
     <h3>Navigation</h3>
     <div id="nav-books" class="nav-item active" onclick="showView('books')">📖 CELTECH Books</div>
     <div id="nav-my" class="nav-item" onclick="showView('my')">🔖 My Reservations</div>
+    <div id="nav-settings" class="nav-item" onclick="showView('settings')">⚙️ Settings</div>
     <div id="nav-about" class="nav-item" onclick="showView('about')">🏫 About Library</div>
 
    <h3 id="pHeading">Student Info</h3>
@@ -40,6 +58,38 @@
   <span id="statusUser">Not logged in</span><span id="statusMsg">| Ready</span><span style="margin-left:auto">CELTECH All Green Theme | ID: 202411059 format</span>
 </div>
 
+<dialog id="borrowingLimitDialog" class="library-dialog borrowing-limit-dialog" aria-labelledby="borrowingLimitTitle">
+  <div class="library-dialog-header">
+    <h2 id="borrowingLimitTitle">Borrowing Limit Reached</h2>
+    <button class="library-dialog-close" type="button" aria-label="Close dialog" onclick="closeBorrowingLimitDialog()">&times;</button>
+  </div>
+  <div class="library-dialog-body">
+    <p class="library-dialog-description">You have reached your maximum borrowing limit of 5 books.</p>
+    <p id="borrowingLimitDialogCount" class="borrowing-limit-dialog-count"></p>
+    <p class="library-dialog-description">You must return a borrowed book or cancel an active reservation before you can reserve another book.</p>
+    <div class="library-dialog-actions">
+      <button class="btn cancel" type="button" onclick="closeBorrowingLimitDialog()">Close</button>
+      <button class="btn" type="button" onclick="viewMyReservationsFromLimit()">View My Reservations</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="logoutDialog" class="library-dialog logout-dialog" aria-labelledby="logoutTitle">
+  <div class="library-dialog-header">
+    <h2 id="logoutTitle">Confirm Logout</h2>
+    <button class="library-dialog-close" type="button" aria-label="Close logout confirmation"
+      onclick="closeLogoutDialog()">&times;</button>
+  </div>
+  <div class="library-dialog-body">
+    <p class="library-dialog-description">Are you sure you want to log out of your CELTECH Library account?</p>
+    <div class="library-dialog-actions">
+      <button class="btn cancel" type="button" onclick="closeLogoutDialog()">Cancel</button>
+      <button class="btn logout-confirm" type="button" onclick="confirmLogout()">Yes, Log Out</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="account-storage.js"></script>
 <script src="books-data.js"></script>
 <script src="library-storage.js"></script>
 <script src="library-ui.js"></script>
@@ -47,7 +97,10 @@
   
 
 let currentView='books'; let currentCat='All'; let currentSearch='';
+let myReservationCategory='All'; let myReservationSearch='';
+let notificationReservationToHighlight = '';
 const categories=['All','BSIT Major','GenEd','Thesis'];
+const reservationCategories=['All','Pending','Pickup','Borrowed','Return Scheduled','Returned','Cancelled'];
 
 
 function updateProfile(){
@@ -65,10 +118,14 @@ function updateProfile(){
 }
 
 function doLogout(){
-  if(confirm('Log out?')){
-    localStorage.removeItem('celtech_user');
-    window.location.href = 'index.php';
-  }
+  document.getElementById('logoutDialog').showModal();
+}
+function closeLogoutDialog(){
+  document.getElementById('logoutDialog').close();
+}
+function confirmLogout(){
+  localStorage.removeItem('celtech_user');
+  window.location.href = 'index.php';
 }
 function showView(v){
   currentView=v;
@@ -78,8 +135,37 @@ function showView(v){
 }
 function filterCat(c){currentCat=c;render();}
 
+function getMyReservationCategory(reservation) {
+  if (reservation.status === PENDING_STATUS) return 'Pending';
+  if (reservation.status === APPROVED_STATUS) return 'Pickup';
+  if (reservation.status === RETURNED_STATUS) return 'Returned';
+  if ([CANCELLED_STATUS, DECLINED_STATUS].includes(reservation.status)) return 'Cancelled';
+  if ([BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(reservation.status)) {
+    if (['Return Schedule Pending', 'Return Schedule Confirmed'].includes(reservation.returnScheduleStatus)) {
+      return 'Return Scheduled';
+    }
+    return 'Borrowed';
+  }
+  return '';
+}
+
+function filterMyReservations(category) {
+  myReservationCategory = category;
+  render();
+}
+
+function updateMyReservationSearch(input) {
+  myReservationSearch = input.value;
+  const cursor = input.selectionStart;
+  render();
+  const updatedInput = document.getElementById('myReservationSearch');
+  updatedInput.focus();
+  updatedInput.setSelectionRange(cursor, cursor);
+}
+
 function render() {
   refreshLibraryData();
+  updateNotificationCenter();
   const content = document.getElementById('content');
 
   if (currentView === 'books') {
@@ -88,13 +174,51 @@ function render() {
       : books.filter(b => b.category === currentCat);
 
     const s = currentSearch.toLowerCase();
-
+    const borrowedCount = getUserBorrowedReservations(getCurrentUser()).length;
+    const remaining = Math.max(0, MAX_ACTIVE_RESERVATIONS - borrowedCount);
+    const reachedLimit = borrowedCount >= MAX_ACTIVE_RESERVATIONS;
+    const limitMessage = borrowedCount === 0
+      ? "You haven't borrowed any books yet. You can borrow up to 5 books."
+      : reachedLimit
+        ? 'Maximum borrowing limit reached. Please return a book before borrowing another.'
+        : `You currently have ${borrowedCount} ${borrowedCount === 1 ? 'book' : 'books'}. You can still borrow ${remaining} more ${remaining === 1 ? 'book' : 'books'}.`;
     if (s) {
       filtered = filtered.filter(b => b.title.toLowerCase().includes(s));
     }
 
     content.innerHTML = `
       <h3 style="color:#0a5e28"> CELTECH Library Catalog — ${filtered.length} Books</h3>
+
+      <section class="borrowing-limit-card ${reachedLimit ? 'at-limit' : ''}" aria-label="My borrowing limit">
+        <h4 class="borrowing-limit-header">My Borrowing Limit</h4>
+        <div class="borrowing-limit-summary">
+          <div class="borrowing-limit-stat">
+            <span>Borrowed Books</span>
+            <strong>${borrowedCount} / ${MAX_ACTIVE_RESERVATIONS} Books</strong>
+          </div>
+          <div class="borrowing-limit-stat">
+            <span>Remaining</span>
+            <strong>${remaining} ${remaining === 1 ? 'Book' : 'Books'} Remaining</strong>
+          </div>
+          <div class="borrowing-limit-stat borrowing-limit-status-stat">
+            <span>Borrowing Status</span>
+            <strong class="borrowing-limit-status">${reachedLimit ? 'Limit Reached' : 'Available'}</strong>
+          </div>
+        </div>
+        <div class="borrowing-limit-progress">
+          <div class="borrowing-limit-progress-heading">
+            <strong>Borrowing Progress</strong>
+            <span>${borrowedCount} of ${MAX_ACTIVE_RESERVATIONS} books</span>
+          </div>
+          <div class="borrowing-limit-meter" role="progressbar" aria-label="Borrowing limit used"
+            aria-valuemin="0" aria-valuemax="${MAX_ACTIVE_RESERVATIONS}" aria-valuenow="${Math.min(borrowedCount, MAX_ACTIVE_RESERVATIONS)}">
+            ${Array.from({ length: MAX_ACTIVE_RESERVATIONS }, (_, index) =>
+              `<span class="borrowing-limit-segment ${index < borrowedCount ? 'is-filled' : ''}" aria-hidden="true"></span>`
+            ).join('')}
+          </div>
+          <small class="borrowing-limit-note">${limitMessage}</small>
+        </div>
+      </section>
 
       <div style="margin:12px 0;display:flex;gap:8px;flex-wrap:wrap">
         ${categories.map(c => `
@@ -113,11 +237,10 @@ function render() {
       <div class="book-grid">
         ${filtered.map(b => {
           const user = getCurrentUser();
-          const reservedCount = getBookReservationCount(b.id);
           const available = getAvailableCopies(b.id);
           const myRequest = getUserActiveReservations(user).find(r => r.bookId === b.id);
 
-          const disabled = available <= 0 || Boolean(myRequest) || getUserActiveReservations(user).length >= 3;
+          const disabled = available <= 0 || Boolean(myRequest);
 
           return `
             <div class="book">
@@ -140,46 +263,46 @@ function render() {
   } else if (currentView === 'my') {
     const u = getCurrentUser();
     const userReservations = getUserReservations(u);
-    const userId = u.id || 'Not provided';
+    const search = myReservationSearch.trim().toLowerCase();
+    const filteredReservations = userReservations.filter(reservation => {
+      const categoryMatches = myReservationCategory === 'All' ||
+        getMyReservationCategory(reservation) === myReservationCategory;
+      const searchMatches = !search || [
+        reservation.title, reservation.author, reservation.reservationId
+      ].some(value => String(value || '').toLowerCase().includes(search));
+      return categoryMatches && searchMatches;
+    });
+    const emptyMessages = {
+      All: 'You have no reservations yet. Browse CELTECH Books to request a book.',
+      Pending: 'No pending requests.',
+      Pickup: 'No books ready for pickup.',
+      Borrowed: 'You currently have no borrowed books.',
+      'Return Scheduled': 'No return schedules yet.',
+      Returned: 'No returned books yet.',
+      Cancelled: 'No cancelled reservations.'
+    };
 
     content.innerHTML = `
-      <h3 style="color:#0a5e28">📖 My Reservations — ID: ${escapeHtml(userId)}</h3>
-      <div class="library-reminder"><strong>PLEASE RETURN YOUR BORROWED BOOK</strong><br>
-        Please return borrowed books on or before the assigned due date. Failure to return borrowed books may result in a library penalty.</div>
-
-      ${userReservations.length === 0
-        ? '<p style="color:#888;margin-top:20px">No reservations or borrowing history yet. Go to CELTECH Books to request a book.</p>'
-        : userReservations.map(r => {
-            return `
-              <div class="res-item">
-                <div>
-                  <b>${escapeHtml(r.title)}</b>
-                  <span class="reservation-status ${r.status === OVERDUE_STATUS ? 'overdue' : r.status === DECLINED_STATUS || r.status === CANCELLED_STATUS ? 'declined' : ''}">${escapeHtml(r.status)}</span>
-                  <span style="background:#0e8a3a;color:#fff;padding:2px 6px;border-radius:4px;font-size:10px">${escapeHtml(r.shelf)}</span>
-                  <div class="meta">Reservation #: ${escapeHtml(r.reservationId)}</div>
-                  <div class="meta">Author: ${escapeHtml(r.author)} | Category: ${escapeHtml(r.category)}</div>
-                  <div class="meta">Request date: ${formatManilaDateTime(r.requestCreatedAt)}</div>
-                  <div class="meta">Preferred pickup: ${formatManilaDateTime(r.preferredPickupAt)}</div>
-                  ${r.confirmedPickupAt ? `<div class="meta">Confirmed pickup: ${formatManilaDateTime(r.confirmedPickupAt)}</div>` : ''}
-                  ${r.pickedUpAt ? `<div class="meta">Picked up: ${formatManilaDateTime(r.pickedUpAt)}</div>` : ''}
-                  ${r.dueAt ? `<div class="meta">Return due: ${formatManilaDateTime(r.dueAt)}</div>` : ''}
-                  ${r.dueAt && HELD_STATUSES.has(r.status) ? `<div class="meta">Remaining: <span data-countdown="${escapeHtml(r.dueAt)}">${formatRemainingTime(r.dueAt)}</span></div>` : ''}
-                  ${r.returnedAt ? `<div class="meta">Returned: ${formatManilaDateTime(r.returnedAt)}</div>` : ''}
-                  ${r.declineReason ? `<div class="meta">Decline reason: ${escapeHtml(r.declineReason)}</div>` : ''}
-                  ${r.penaltyStatus !== 'No Penalty' ? `<div class="reservation-warning">Penalty status: ${escapeHtml(r.penaltyStatus)}. DEMO PLACEHOLDER penalty amount: ₱${Number(r.penaltyAmount ?? getPenaltyAmount()).toLocaleString('en-PH')}.</div>` : ''}
-                  ${r.status === DUE_SOON_STATUS ? `<div class="reservation-warning">Due soon: ${getDueSoonThresholdHours()} hours or less remain. Please return the book to the library.</div>` : ''}
-                  ${r.status === OVERDUE_STATUS ? `<div class="reservation-warning">Overdue by ${formatRemainingTime(r.dueAt)}. DEMO PLACEHOLDER penalty notice: ₱${Number(r.penaltyAmount ?? getPenaltyAmount()).toLocaleString('en-PH')}. This is not an enforceable school fee.</div>` : ''}
-                  ${[BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(r.status) ? '<div class="meta">Return the physical book to the library. Only an Admin can confirm its return.</div>' : ''}
-                </div>
-                ${[PENDING_STATUS, APPROVED_STATUS].includes(r.status) && !r.pickedUpAt
-                  ? `<button class="btn cancel" style="width:auto" data-reservation-id="${escapeHtml(r.reservationId)}" onclick="cancel(this.dataset.reservationId)">Cancel Request</button>`
-                  : ''}
-              </div>
-            `;
-          }).join('')
-      }
+      <h3 class="my-reservations-title">My Reservations — ${userReservations.length} Reservations</h3>
+      <div class="my-reservation-filters" role="group" aria-label="Filter reservations by status">
+        ${reservationCategories.map(category => {
+          const count = category === 'All'
+            ? userReservations.length
+            : userReservations.filter(reservation => getMyReservationCategory(reservation) === category).length;
+          return `<button class="category-filter" type="button" aria-pressed="${myReservationCategory === category}"
+            onclick="filterMyReservations('${category}')">${category} <span class="my-reservation-count">${count}</span></button>`;
+        }).join('')}
+      </div>
+      <input id="myReservationSearch" class="search" aria-label="Search my reservations"
+        value="${escapeHtml(myReservationSearch)}" placeholder="Search reservations by book, author, or reservation ID..."
+        oninput="updateMyReservationSearch(this)">
+      ${filteredReservations.length === 0
+        ? `<p class="my-reservations-empty">${search ? 'No reservations match your search.' : emptyMessages[myReservationCategory]}</p>`
+        : `<div class="book-grid my-reservation-grid">${filteredReservations.map(renderBorrowerReservation).join('')}</div>`}
     `;
 
+  } else if (currentView === 'settings') {
+    renderAccountSettings(content);
   } else {
     content.innerHTML = `
       <h3 style="color:#0a5e28">🏫 About CELTECH Library</h3>
@@ -196,7 +319,163 @@ function render() {
       </div>
     `;
   }
+
+  if (currentView === 'my' && notificationReservationToHighlight) {
+    const reservationCard = Array.from(document.querySelectorAll('.my-reservation-card'))
+      .find(card => card.dataset.reservationId === notificationReservationToHighlight);
+    if (reservationCard) {
+      reservationCard.classList.add('notification-highlight');
+      window.setTimeout(() => reservationCard.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0);
+    }
+    notificationReservationToHighlight = '';
+  }
 }
+
+function renderBorrowerReservation(r) {
+  const isBorrowed = [BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(r.status);
+  const scheduleStatus = r.returnScheduleStatus || 'No Return Schedule';
+  const canSchedule = scheduleStatus !== 'Return Schedule Confirmed';
+  const scheduleButtonText = scheduleStatus === 'Return Schedule Pending'
+    ? 'Update Return Schedule'
+    : 'Schedule Book Return';
+  return `
+    <article class="book my-reservation-card ${r.reservationId === notificationReservationToHighlight ? 'notification-highlight' : ''}"
+      data-reservation-id="${escapeHtml(r.reservationId)}">
+      <header class="my-reservation-header">
+        <h4>${escapeHtml(r.title)}</h4>
+        <span class="reservation-status ${r.status === OVERDUE_STATUS ? 'overdue' : [DECLINED_STATUS, CANCELLED_STATUS].includes(r.status) ? 'declined' : ''}">${escapeHtml(r.status)}</span>
+      </header>
+      <div class="meta">Author: ${escapeHtml(r.author)}</div>
+      <div class="meta">Shelf: ${escapeHtml(r.shelf)} | Category: ${escapeHtml(r.category)}</div>
+      ${r.preferredPickupAt || r.confirmedPickupAt
+        ? `<div class="meta">Pickup: ${formatManilaDateTime(r.confirmedPickupAt || r.preferredPickupAt)}</div>`
+        : ''}
+      ${isBorrowed ? `
+        <div class="meta">Return due: ${formatManilaDateTime(r.dueAt)}</div>
+        <div class="meta my-reservation-countdown">Remaining: <span data-countdown="${escapeHtml(r.dueAt)}">${formatBorrowingCountdown(r.dueAt)}</span></div>
+        ${scheduleStatus !== 'No Return Schedule' ? `<div class="meta">Return schedule: ${escapeHtml(scheduleStatus)}</div>` : ''}
+      ` : ''}
+      ${r.returnedAt ? `<div class="meta">Returned: ${formatManilaDateTime(r.returnedAt)}</div>` : ''}
+      <div class="my-reservation-actions">
+        <button class="btn my-reservation-details-button" type="button"
+          data-reservation-id="${escapeHtml(r.reservationId)}"
+          onclick="viewMyReservationDetails(this.dataset.reservationId)">View Details</button>
+        ${[PENDING_STATUS, APPROVED_STATUS].includes(r.status) && !r.pickedUpAt
+          ? `<button class="btn cancel" type="button" data-reservation-id="${escapeHtml(r.reservationId)}" onclick="cancel(this.dataset.reservationId)">Cancel Request</button>`
+          : ''}
+        ${isBorrowed && canSchedule ? `<button class="btn return-schedule-button" type="button"
+          data-reservation-id="${escapeHtml(r.reservationId)}"
+          onclick="openReturnScheduleDialog(this.dataset.reservationId)">${scheduleButtonText}</button>` : ''}
+      </div>
+    </article>
+  `;
+}
+
+function viewMyReservationDetails(reservationId) {
+  const reservation = getReservation(reservationId);
+  if (!reservation || reservation.userKey !== getUserKey(getCurrentUser())) {
+    showLibraryToast('Reservation not found.', 'error');
+    return;
+  }
+  const activity = getLibraryActivity()
+    .filter(item => item.reservationId === reservation.reservationId)
+    .slice()
+    .reverse();
+  const history = activity.length
+    ? activity.map(item => `${formatManilaDateTime(item.timestamp)} — ${item.action}${item.adminName ? ` (${item.adminName})` : ''}`).join('\n')
+    : 'No activity recorded.';
+  const user = getCurrentUser();
+  openLibraryDialog({
+    title: 'Reservation Details',
+    details: [
+      { label: 'Name', value: user.name },
+      { label: 'User ID', value: user.id || 'Not provided' },
+      { label: 'Role', value: user.role },
+      { label: 'Book', value: reservation.title },
+      { label: 'Author', value: reservation.author },
+      { label: 'Category', value: reservation.category },
+      { label: 'Shelf location', value: reservation.shelf },
+      { label: 'Reservation ID', value: reservation.reservationId },
+      { label: 'Reservation date', value: formatManilaDateTime(reservation.requestCreatedAt) },
+      { label: 'Preferred pickup', value: formatManilaDateTime(reservation.preferredPickupAt) },
+      { label: 'Confirmed pickup schedule', value: formatManilaDateTime(reservation.confirmedPickupAt) },
+      { label: 'Actual pickup', value: formatManilaDateTime(reservation.pickedUpAt) },
+      { label: 'Return deadline', value: formatManilaDateTime(reservation.dueAt) },
+      { label: 'Remaining time', value: reservation.dueAt && HELD_STATUSES.has(reservation.status) ? formatBorrowingCountdown(reservation.dueAt) : '—' },
+      { label: 'Return schedule status', value: reservation.returnScheduleStatus || 'No Return Schedule' },
+      { label: 'Requested return schedule', value: formatManilaDateTime(reservation.requestedReturnAt) },
+      { label: 'Confirmed return schedule', value: formatManilaDateTime(reservation.confirmedReturnScheduleAt) },
+      { label: 'Return schedule note', value: reservation.returnScheduleNote || '—' },
+      { label: 'Return schedule resolution', value: reservation.returnScheduleResolutionNote || '—' },
+      { label: 'Returned at', value: formatManilaDateTime(reservation.returnedAt) },
+      { label: 'Status', value: reservation.status },
+      { label: 'Penalty amount', value: reservation.penaltyAmount == null ? '—' : `₱${Number(reservation.penaltyAmount).toLocaleString('en-PH')}` },
+      { label: 'Penalty status', value: reservation.penaltyStatus },
+      { label: 'Penalty resolution', value: [
+        reservation.penaltyResolutionAt && formatManilaDateTime(reservation.penaltyResolutionAt),
+        reservation.penaltyResolutionReason
+      ].filter(Boolean).join(' — ') || '—' },
+      { label: 'Decline reason', value: reservation.declineReason || '—' },
+      { label: 'Activity history', value: history }
+    ],
+    confirmText: 'Close'
+  });
+}
+
+function openNotifiedReservation(reservationId) {
+  refreshLibraryData();
+  const reservation = getReservation(reservationId);
+  const user = getCurrentUser();
+  if (!reservation || reservation.userKey !== getUserKey(user)) {
+    showLibraryToast('This reservation is no longer available in your account.', 'error');
+    return;
+  }
+  currentView = 'my';
+  myReservationCategory = getMyReservationCategory(reservation) || 'All';
+  myReservationSearch = '';
+  notificationReservationToHighlight = reservation.reservationId;
+  showView('my');
+}
+window.openNotifiedReservation = openNotifiedReservation;
+
+function openReturnScheduleDialog(reservationId) {
+  const reservation = getReservation(reservationId);
+  if (!reservation || ![BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(reservation.status)) {
+    showLibraryToast('A return schedule can only be submitted for a borrowed book.', 'error');
+    return;
+  }
+  const dueAt = Date.parse(reservation.dueAt);
+  const latestAllowed = Number.isFinite(dueAt) && dueAt > Date.now()
+    ? dueAt - 60000
+    : Date.now() + 3600000;
+  const defaultAt = reservation.requestedReturnAt
+    ? new Date(reservation.requestedReturnAt)
+    : new Date(Math.max(Date.now() + 60000, Math.min(Date.now() + 3600000, latestAllowed)));
+  const schedule = getManilaDateTimeParts(defaultAt);
+  const maxDate = Number.isFinite(dueAt) && dueAt > Date.now()
+    ? getManilaDateTimeParts(new Date(dueAt)).date
+    : undefined;
+  openLibraryDialog({
+    title: reservation.returnScheduleStatus === 'Return Schedule Pending'
+      ? 'Update Return Schedule'
+      : 'Schedule Book Return',
+    description: 'Choose your preferred date and time to return the physical book. This request does not stop the borrowing timer or mark the book as returned.',
+    details: [{ label: 'Book', value: reservation.title }],
+    fields: [
+      { name: 'returnDate', label: 'Preferred return date (Asia/Manila)', type: 'date', min: getManilaDateTimeParts().date, max: maxDate, value: schedule.date, required: true },
+      { name: 'returnTime', label: 'Preferred return time', type: 'time', value: schedule.time, required: true },
+      { name: 'note', label: 'Optional note', type: 'textarea', rows: 3, value: reservation.returnScheduleNote }
+    ],
+    confirmText: 'Submit Schedule',
+    onConfirm(values) {
+      const requestedAt = parseManilaDateTime(values.returnDate, values.returnTime);
+      submitReturnSchedule(reservationId, getCurrentUser(), requestedAt, values.note);
+      render();
+    },
+    successMessage: 'Return schedule submitted. It is awaiting Admin confirmation.'
+  });
+}
+
 function reserve(id) {
   const book = books.find(item => item.id === Number(id));
   if (!book) {
@@ -204,6 +483,13 @@ function reserve(id) {
     return;
   }
   const user = getCurrentUser();
+  if (getUserActiveReservations(user).length >= MAX_ACTIVE_RESERVATIONS) {
+    const activeCount = getUserActiveReservations(user).length;
+    document.getElementById('borrowingLimitDialogCount').textContent =
+      `${activeCount} / ${MAX_ACTIVE_RESERVATIONS} Books`;
+    document.getElementById('borrowingLimitDialog').showModal();
+    return;
+  }
   const defaultPickup = getManilaDateTimeParts(new Date(Date.now() + 86400000));
   openLibraryDialog({
     title: 'Confirm Reservation',
@@ -230,6 +516,20 @@ function reserve(id) {
     }
   });
 }
+
+function closeBorrowingLimitDialog() {
+  const dialog = document.getElementById('borrowingLimitDialog');
+  if (dialog.open) dialog.close();
+}
+
+function viewMyReservationsFromLimit() {
+  closeBorrowingLimitDialog();
+  showView('my');
+}
+
+document.getElementById('borrowingLimitDialog').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeBorrowingLimitDialog();
+});
 
 function updateCatalogSearch(input) {
   currentSearch = input.value;
@@ -262,10 +562,58 @@ function cancel(reservationId) {
 
 function updateCountdowns() {
   document.querySelectorAll('[data-countdown]').forEach(element => {
-    element.textContent = formatRemainingTime(element.dataset.countdown);
+    element.textContent = formatBorrowingCountdown(element.dataset.countdown);
   });
   refreshLibraryData();
   if (currentView === 'my') render();
+}
+
+function saveAccountSettings(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const user = getCurrentUser();
+  try {
+    changeLibraryAccountPassword(
+      user,
+      form.elements.currentPassword.value,
+      form.elements.newPassword.value,
+      form.elements.confirmPassword.value
+    );
+    form.reset();
+    showLibraryToast('Password updated successfully. Use your new password the next time you log in.');
+  } catch (error) {
+    showLibraryToast(error.message, 'error');
+  }
+}
+
+function renderAccountSettings(content) {
+  const user = getCurrentUser();
+  const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
+  content.innerHTML = `
+    <h3 class="admin-page-title">Account Settings</h3>
+    <div class="account-settings-page">
+      <section class="settings-section account-information">
+        <h4>Account Information</h4>
+        <label for="accountName">Account Name</label>
+        <input id="accountName" type="text" value="${escapeHtml(user.name)}" readonly>
+        <label for="accountId">Account ID</label>
+        <input id="accountId" type="text" value="${escapeHtml(user.id)}" readonly>
+        <label for="accountRole">Account Role</label>
+        <input id="accountRole" type="text" value="${escapeHtml(roleLabel)}" readonly>
+        <p class="account-notice">Your account name and ID can only be changed by the administrator. Please contact the library administrator if you need to update your information.</p>
+      </section>
+      <form class="settings-section account-password-form" onsubmit="saveAccountSettings(event)">
+        <h4>Change Password</h4>
+        <label for="currentPassword">Current Password</label>
+        <input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" required>
+        <label for="newPassword">New Password</label>
+        <input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="6" required>
+        <label for="confirmPassword">Confirm New Password</label>
+        <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required>
+        <button class="btn settings-save" type="submit">Update Password</button>
+      </form>
+    </div>
+  `;
 }
 
 if (requireDashboardRole('student')) {

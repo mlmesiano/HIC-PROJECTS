@@ -6,7 +6,7 @@
 <title>CELTECH Library - Admin Dashboard</title>
 <link rel="stylesheet" href="dashboard.css">
 </head>
-<body>
+<body class="admin-dashboard">
 <div class="titlebar">
   <img src="images.jpg" alt="CELTECH College Olongapo logo">
   <div><b> CELTECH COLLEGE OLONGAPO — Digital Library</b> | BSIT 3A Final Project</div>
@@ -17,6 +17,7 @@
     <h3>Navigation</h3>
     <div id="nav-books" class="nav-item active" onclick="showView('books')">📖 CELTECH Books</div>
     <div id="nav-requests" class="nav-item" onclick="showView('requests')">📋 Student / Teacher Requests</div>
+    <div id="nav-register" class="nav-item" onclick="showView('register')">👤 Register Student</div>
     <div id="nav-settings" class="nav-item" onclick="showView('settings')">⚙️ Settings</div>
     <div id="nav-about" class="nav-item" onclick="showView('about')">🏫 About Library</div>
 
@@ -49,6 +50,7 @@
         onclick="closeRestockDialog()">&times;</button>
     </div>
     <div class="library-dialog-body">
+      <div id="restockMessage" class="admin-inline-message" role="alert" aria-live="polite" hidden></div>
       <p id="restockBookTitle" class="restock-book-title"></p>
       <dl class="library-dialog-details">
         <div><dt>Current Stock</dt><dd id="restockCurrentStock"></dd></div>
@@ -56,9 +58,11 @@
         <div><dt>Reserved</dt><dd id="restockReservedStock"></dd></div>
       </dl>
       <label class="library-dialog-label" for="restockQuantity">Quantity to Add</label>
-      <input id="restockQuantity" class="library-dialog-input" type="number" min="1" step="1"
+      <div class="admin-form-field">
+        <input id="restockQuantity" class="library-dialog-input" type="number" min="1" step="1"
         inputmode="numeric" aria-describedby="restockValidation">
-      <p id="restockValidation" class="library-dialog-validation" aria-live="polite"></p>
+        <p id="restockValidation" class="library-dialog-validation admin-field-error" aria-live="polite" hidden></p>
+      </div>
       <div class="library-dialog-actions">
         <button class="btn cancel" type="button" onclick="closeRestockDialog()">Cancel</button>
         <button class="btn" type="submit">Confirm Restock</button>
@@ -80,8 +84,47 @@
   <div id="manageReservationActions" class="reservation-manage-actions"></div>
 </dialog>
 
+<dialog id="overdueManagementDialog" class="reservation-manage-dialog" aria-labelledby="overdueManagementTitle">
+  <div class="reservation-manage-header">
+    <div>
+      <h2 id="overdueManagementTitle">Manage Overdue Book</h2>
+      <p id="overdueManagementSubtitle"></p>
+    </div>
+    <button class="library-dialog-close" type="button" aria-label="Close overdue book details"
+      onclick="closeOverdueManagementDialog()">&times;</button>
+  </div>
+  <div id="overdueManagementContent" class="reservation-manage-content"></div>
+  <div id="overdueManagementMessage" class="admin-inline-message overdue-management-message"
+    role="status" aria-live="polite" hidden></div>
+  <div class="reservation-manage-actions">
+    <button id="overdueNotifyButton" class="btn manage-action-primary" type="button"
+      onclick="sendOverdueReminderFromDialog()">Notify Borrower</button>
+    <button class="btn manage-action-secondary" type="button"
+      onclick="confirmOverduePhysicalReturn()">Confirm Physical Return</button>
+    <button class="btn manage-action-secondary" type="button"
+      onclick="closeOverdueManagementDialog()">Close</button>
+  </div>
+</dialog>
+
+<dialog id="logoutDialog" class="library-dialog logout-dialog" aria-labelledby="logoutTitle">
+  <div class="library-dialog-header">
+    <h2 id="logoutTitle">Confirm Logout</h2>
+    <button class="library-dialog-close" type="button" aria-label="Close logout confirmation"
+      onclick="closeLogoutDialog()">&times;</button>
+  </div>
+  <div class="library-dialog-body">
+    <p class="library-dialog-description">Are you sure you want to log out of your CELTECH Library account?</p>
+    <div class="library-dialog-actions">
+      <button class="btn cancel" type="button" onclick="closeLogoutDialog()">Cancel</button>
+      <button class="btn logout-confirm" type="button" onclick="confirmLogout()">Yes, Log Out</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="account-storage.js"></script>
 <script src="books-data.js"></script>
 <script src="library-storage.js"></script>
+<script>window.isAdminDashboard = true;</script>
 <script src="library-ui.js"></script>
 <script>
 let currentView = 'books';
@@ -89,8 +132,84 @@ let currentCategory = 'All';
 let searchText = '';
 let restockBookId = null;
 let requestSearch = '';
-let requestStatusFilter = 'All';
+let requestTab = 'pending';
+let adminAccountSearch = '';
+let activityHistorySearch = '';
+let activityHistoryVisibleCount = 10;
+const remindersInProgress = new Set();
+let overdueManagementReservationId = null;
+let overdueManagementOpener = null;
 const categories = ['All', 'BSIT Major', 'GenEd', 'Thesis'];
+const reminderCooldowns = new Map();
+
+function showAdminInlineNotification(message, type = 'success', container = null) {
+  const target = container || document.getElementById('content');
+  if (!target) return;
+  let notification = container
+    ? container.querySelector('[data-admin-form-message]')
+    : target.querySelector('#adminPageNotification');
+  if (!notification) {
+    notification = document.createElement('div');
+    notification.className = 'admin-inline-message';
+    notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    notification.setAttribute('aria-live', 'polite');
+    if (container) {
+      notification.dataset.adminFormMessage = '';
+      container.prepend(notification);
+    } else {
+      notification.id = 'adminPageNotification';
+      target.prepend(notification);
+    }
+
+    document.getElementById('content').addEventListener('input', event => {
+      if (event.target.matches('input, textarea, select')) clearAdminFieldError(event.target);
+    });
+  }
+  notification.classList.toggle('is-error', type === 'error');
+  notification.classList.toggle('is-success', type !== 'error');
+  notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  notification.textContent = message;
+  notification.hidden = false;
+}
+
+window.showAdminInlineNotification = showAdminInlineNotification;
+
+function setAdminFormMessage(form, message, type = 'error') {
+  const notification = form.querySelector('[data-admin-form-message]');
+  if (!notification) return;
+  notification.classList.toggle('is-error', type === 'error');
+  notification.classList.toggle('is-success', type !== 'error');
+  notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  notification.textContent = message;
+  notification.hidden = !message;
+}
+
+function setAdminFieldError(input, message) {
+  const field = input.closest('.admin-form-field, .library-dialog-field') || input.parentElement;
+  const error = field.querySelector('.admin-field-error');
+  input.setAttribute('aria-invalid', 'true');
+  if (error) {
+    error.textContent = message;
+    error.hidden = false;
+  }
+}
+
+function clearAdminFieldError(input) {
+  input.removeAttribute('aria-invalid');
+  const field = input.closest('.admin-form-field, .library-dialog-field') || input.parentElement;
+  const error = field.querySelector('.admin-field-error');
+  if (error) {
+    error.textContent = '';
+    error.hidden = true;
+  }
+  const form = input.closest('form');
+  if (form) setAdminFormMessage(form, '');
+}
+
+function clearAdminFormErrors(form) {
+  form.querySelectorAll('[aria-invalid="true"]').forEach(clearAdminFieldError);
+  setAdminFormMessage(form, '');
+}
 
 function updateProfile() {
   const user = getCurrentUser();
@@ -100,16 +219,23 @@ function updateProfile() {
 }
 
 function doLogout() {
-  if (confirm('Log out?')) {
-    localStorage.removeItem('celtech_user');
-    window.location.href = 'index.php';
-  }
+  document.getElementById('logoutDialog').showModal();
+}
+
+function closeLogoutDialog() {
+  document.getElementById('logoutDialog').close();
+}
+
+function confirmLogout() {
+  localStorage.removeItem('celtech_user');
+  window.location.href = 'index.php';
 }
 
 function showView(view) {
   currentView = view;
   document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-  document.getElementById(`nav-${view}`).classList.add('active');
+  const activeNavigation = document.getElementById(`nav-${view}`);
+  if (activeNavigation) activeNavigation.classList.add('active');
   render();
 }
 
@@ -171,7 +297,9 @@ function restock(bookId) {
   document.getElementById('restockReservedStock').textContent = `${getBookReservationCount(book.id)} Copies`;
   const quantityInput = document.getElementById('restockQuantity');
   quantityInput.value = '';
-  quantityInput.removeAttribute('aria-invalid');
+  clearAdminFieldError(quantityInput);
+  setAdminFormMessage(document.getElementById('restockForm'), '');
+  document.getElementById('restockMessage').hidden = true;
   document.getElementById('restockValidation').textContent = '';
   document.getElementById('restockDialog').showModal();
   document.getElementById('restockQuantity').focus();
@@ -187,13 +315,21 @@ function showRestockToast(message, type = 'success') {
 
 function submitRestock(event) {
   event.preventDefault();
+  const form = event.currentTarget;
+  clearAdminFormErrors(form);
   const quantityInput = document.getElementById('restockQuantity');
   const rawQuantity = quantityInput.value.trim();
   const quantity = quantityInput.valueAsNumber;
   const validation = document.getElementById('restockValidation');
   if (!/^\d+$/.test(rawQuantity) || !Number.isSafeInteger(quantity) || quantity <= 0) {
-    validation.textContent = 'Enter a positive whole-number quantity.';
-    quantityInput.setAttribute('aria-invalid', 'true');
+    const message = 'Enter a positive whole-number quantity.';
+    validation.textContent = message;
+    validation.hidden = false;
+    document.getElementById('restockMessage').textContent = message;
+    document.getElementById('restockMessage').classList.add('is-error');
+    document.getElementById('restockMessage').classList.remove('is-success');
+    document.getElementById('restockMessage').hidden = false;
+    setAdminFieldError(quantityInput, message);
     quantityInput.focus();
     return;
   }
@@ -206,16 +342,22 @@ function submitRestock(event) {
     showRestockToast(`${updatedBook.title} restocked successfully. Updated total stock: ${updatedBook.copies}.`);
   } catch (error) {
     validation.textContent = error.message;
-    quantityInput.setAttribute('aria-invalid', 'true');
+    validation.hidden = false;
+    document.getElementById('restockMessage').textContent = error.message;
+    document.getElementById('restockMessage').classList.add('is-error');
+    document.getElementById('restockMessage').classList.remove('is-success');
+    document.getElementById('restockMessage').hidden = false;
+    setAdminFieldError(quantityInput, error.message);
     quantityInput.focus();
-    showRestockToast(error.message, 'error');
   }
 }
 
 document.getElementById('restockForm').addEventListener('submit', submitRestock);
 document.getElementById('restockQuantity').addEventListener('input', event => {
-  event.currentTarget.removeAttribute('aria-invalid');
+  clearAdminFieldError(event.currentTarget);
   document.getElementById('restockValidation').textContent = '';
+  document.getElementById('restockValidation').hidden = true;
+  document.getElementById('restockMessage').hidden = true;
 });
 document.getElementById('restockDialog').addEventListener('click', event => {
   if (event.target === event.currentTarget) closeRestockDialog();
@@ -236,85 +378,397 @@ function updateBookSearch(input) {
 }
 
 function renderRequests(content) {
-  const statuses = [
-    PENDING_STATUS, APPROVED_STATUS, BORROWED_STATUS, DUE_SOON_STATUS,
-    OVERDUE_STATUS, DECLINED_STATUS, CANCELLED_STATUS, RETURNED_STATUS
+  const tabs = [
+    { id: 'pending', label: 'Pending Requests' },
+    { id: 'approved', label: 'Approved / Ready for Pickup' },
+    { id: 'borrowed', label: 'Borrowed Books' },
+    { id: 'returns', label: 'Return Requests' },
+    { id: 'overdue', label: 'Overdue Books' }
   ];
+  const activityCount = getLibraryActivity().length;
+  const borrowedStatuses = [BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS];
+  const hasReturnSchedule = reservation =>
+    ['Return Schedule Pending', 'Return Schedule Confirmed'].includes(reservation.returnScheduleStatus);
+  const isOverdue = reservation =>
+    Boolean(reservation.pickedUpAt) &&
+    borrowedStatuses.includes(reservation.status) &&
+    ['student', 'teacher'].includes(String(reservation.userRole || '').toLowerCase()) &&
+    reservation.status !== RETURNED_STATUS &&
+    !reservation.returnedAt &&
+    Number.isFinite(Date.parse(reservation.dueAt)) &&
+    Date.parse(reservation.dueAt) <= Date.now();
+  const matchesTab = (reservation, tab) => {
+    if (tab === 'pending') return reservation.status === PENDING_STATUS;
+    if (tab === 'approved') return reservation.status === APPROVED_STATUS;
+    if (tab === 'borrowed') {
+      return borrowedStatuses.includes(reservation.status) &&
+        !reservation.returnedAt && !isOverdue(reservation);
+    }
+    if (tab === 'returns') {
+      return borrowedStatuses.includes(reservation.status) &&
+        !reservation.returnedAt && !isOverdue(reservation) && hasReturnSchedule(reservation);
+    }
+    if (tab === 'overdue') return isOverdue(reservation);
+    return false;
+  };
+  const historySelected = requestTab === 'history';
+  const matchingTabReservations = historySelected
+    ? []
+    : reservations.filter(reservation => matchesTab(reservation, requestTab));
   const query = requestSearch.toLowerCase();
-  const filtered = reservations.filter(reservation => {
-    const book = books.find(item => item.id === reservation.bookId);
-    const matchesStatus = requestStatusFilter === 'All' || reservation.status === requestStatusFilter;
+  const filtered = matchingTabReservations.filter(reservation => {
     const haystack = [
       reservation.userName, reservation.userId, reservation.userRole,
-      reservation.title, reservation.shelf, book && book.title
+      reservation.title, reservation.shelf
     ].join(' ').toLowerCase();
-    return matchesStatus && (!query || haystack.includes(query));
+    return !query || haystack.includes(query);
   });
-  const overdueCount = reservations.filter(reservation => reservation.status === OVERDUE_STATUS).length;
+  const overdueCount = reservations.filter(isOverdue).length;
 
   content.insertAdjacentHTML('beforeend', `
-    <h3 style="color:#0a5e28">Student / Teacher Requests</h3>
-    ${overdueNotificationMode === 'banner' && overdueCount > 0
-      ? `<p class="overdue-notice" role="status">${overdueCount} reservation${overdueCount === 1 ? '' : 's'} overdue. Review the overdue requests below.</p>`
+    <h3 class="admin-page-title">Student / Teacher Requests</h3>
+    ${requestTab === 'overdue' && overdueCount > 0
+      ? `<p class="overdue-notice" role="status">${overdueCount} reservation${overdueCount === 1 ? '' : 's'} overdue. Review and notify borrowers as needed.</p>`
       : ''}
+    <nav class="request-tabs" role="tablist" aria-label="Reservation categories">
+      ${tabs.map(tab => {
+        const count = reservations.filter(reservation => matchesTab(reservation, tab.id)).length;
+        const selected = requestTab === tab.id;
+        return `<button id="request-tab-${tab.id}" class="request-tab ${selected ? 'active' : ''}"
+          type="button" role="tab" aria-selected="${selected}" aria-controls="requests-panel"
+          onclick="selectRequestTab('${tab.id}')">
+          <span>${tab.label}</span><span class="request-tab-count">${count}</span>
+        </button>`;
+      }).join('')}
+      <span class="request-tab-separator" aria-hidden="true"></span>
+      <button id="request-tab-history" class="request-tab request-history-tab ${historySelected ? 'active' : ''}"
+        type="button" role="tab" aria-selected="${historySelected}" aria-controls="requests-panel"
+        onclick="selectRequestTab('history')">
+        <svg class="request-history-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 4.5A2.5 2.5 0 0 1 7.5 2H20v17H7.5A2.5 2.5 0 0 0 5 21.5z"></path>
+          <path d="M5 4.5v17M9 6h7M9 9h7M9 12h5"></path>
+        </svg>
+        <span>Activity History</span><span class="request-tab-count">${activityCount}</span>
+      </button>
+    </nav>
+    ${historySelected
+      ? `<div id="requests-panel" class="request-panel activity-history-panel" role="tabpanel"
+          aria-labelledby="request-tab-history">
+          <h4 class="activity-history-title">Borrowing Activity History
+            <span class="request-tab-count">${activityCount}</span>
+          </h4>
+          ${renderActivityHistory()}
+        </div>`
+      : `
     <div class="request-controls">
       <input class="search" aria-label="Search requests" placeholder="Search by person, ID, or book..."
         value="${escapeHtml(requestSearch)}" oninput="updateRequestSearch(this)">
-      <select class="request-filter" aria-label="Filter by status" onchange="requestStatusFilter=this.value;render()">
-        <option value="All">All statuses</option>
-        ${statuses.map(status => `<option value="${escapeHtml(status)}" ${requestStatusFilter === status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}
-      </select>
     </div>
+    <div id="requests-panel" class="request-panel" role="tabpanel" aria-labelledby="request-tab-${requestTab}">
     ${filtered.length === 0
-      ? '<p style="color:#888;margin-top:20px">No matching reservations.</p>'
+      ? `<p class="request-empty-state">${query ? 'No matching reservations in this category.' : `No ${tabs.find(tab => tab.id === requestTab).label.toLowerCase()}.`}</p>`
       : `
         <div class="request-table-wrap">
           <table class="request-table">
             <thead><tr>
-              <th>Student / Teacher</th><th>Book Title</th><th>Pickup Schedule</th>
-              <th>Return Due</th><th>Remaining Time</th><th>Status</th><th>Actions</th>
+              <th>Student / Teacher</th><th>Account ID</th><th>Book Title</th>
+              <th>Relevant Dates</th><th>Current Status</th><th>Actions</th>
             </tr></thead>
             <tbody>
-              ${filtered.map(reservation => `
-                <tr>
-                  <td data-label="Student / Teacher">${escapeHtml(reservation.userName)}<span class="request-secondary">${escapeHtml(reservation.userRole)}</span></td>
-                  <td data-label="Book Title">${escapeHtml(reservation.title)}<span class="request-secondary">Shelf: ${escapeHtml(reservation.shelf)}</span></td>
-                  <td data-label="Pickup Schedule">${formatManilaDateTime(reservation.confirmedPickupAt || reservation.preferredPickupAt)}
-                    <span class="request-secondary">${reservation.confirmedPickupAt ? 'Confirmed' : 'Requested'}</span></td>
-                  <td data-label="Return Due">${formatManilaDateTime(reservation.dueAt)}</td>
-                  <td data-label="Remaining Time">${reservation.dueAt && HELD_STATUSES.has(reservation.status)
-                    ? `<span data-countdown="${escapeHtml(reservation.dueAt)}">${formatRemainingTime(reservation.dueAt)}</span>`
-                    : '—'}</td>
-                  <td data-label="Status"><span class="reservation-status ${reservation.status === OVERDUE_STATUS ? 'overdue' : reservation.status === DECLINED_STATUS || reservation.status === CANCELLED_STATUS ? 'declined' : ''}">${escapeHtml(reservation.status)}</span></td>
-                  <td data-label="Actions" class="request-actions">
-                    <button class="btn request-manage-button" type="button"
-                      data-reservation-id="${escapeHtml(reservation.reservationId)}"
-                      onclick="openManageReservationDialog(this.dataset.reservationId, this)">Manage</button>
-                  </td>
-                </tr>
-              `).join('')}
+              ${filtered.map(reservation => {
+                let dateLabel = 'Pickup schedule';
+                let dateValue = reservation.confirmedPickupAt || reservation.preferredPickupAt;
+                let dateDetail = reservation.confirmedPickupAt ? 'Confirmed pickup' : 'Requested pickup';
+                if (requestTab === 'borrowed') {
+                  dateLabel = 'Return due';
+                  dateValue = reservation.dueAt;
+                  dateDetail = reservation.pickedUpAt
+                    ? `Picked up ${formatManilaDateTime(reservation.pickedUpAt)}`
+                    : 'Pickup not recorded';
+                } else if (requestTab === 'returns') {
+                  dateLabel = 'Return schedule';
+                  dateValue = reservation.confirmedReturnScheduleAt || reservation.requestedReturnAt;
+                  dateDetail = reservation.returnScheduleStatus;
+                } else if (requestTab === 'overdue') {
+                  dateLabel = 'Due date';
+                  dateValue = reservation.dueAt;
+                  dateDetail = formatRemainingTime(reservation.dueAt);
+                }
+                const formattedDate = dateValue
+                  ? formatManilaDateTime(dateValue)
+                  : 'Not scheduled';
+                const overdue = isOverdue(reservation);
+                const countdown = borrowedStatuses.includes(reservation.status) && reservation.dueAt
+                  ? `<span class="request-secondary" data-countdown="${escapeHtml(reservation.dueAt)}">${formatRemainingTime(reservation.dueAt)}</span>`
+                  : '';
+                return `
+                  <tr>
+                    <td data-label="Student / Teacher">${escapeHtml(reservation.userName)}
+                      <span class="request-secondary">${escapeHtml(reservation.userRole)}</span></td>
+                    <td data-label="Account ID">${escapeHtml(reservation.userId || '—')}</td>
+                    <td data-label="Book Title">${escapeHtml(reservation.title)}
+                      <span class="request-secondary">Shelf: ${escapeHtml(reservation.shelf)}</span></td>
+                    <td data-label="Relevant Dates"><span class="request-date-label">${dateLabel}</span>
+                      ${escapeHtml(formattedDate)}
+                      <span class="request-secondary">${escapeHtml(dateDetail)}</span>${countdown}</td>
+                    <td data-label="Current Status"><span class="reservation-status ${overdue ? 'overdue' : ''}">${overdue ? 'OVERDUE' : escapeHtml(reservation.status)}</span></td>
+                    <td data-label="Actions" class="request-actions">
+                      <button class="btn request-manage-button" type="button"
+                        data-reservation-id="${escapeHtml(reservation.reservationId)}"
+                        onclick="${requestTab === 'overdue'
+                          ? 'openOverdueManagementDialog(this.dataset.reservationId, this)'
+                          : 'openManageReservationDialog(this.dataset.reservationId, this)'}">Manage</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>
       `}
-    <section class="activity-list">
-      <h4>Borrowing Activity History</h4>
-      ${renderActivityHistory()}
-    </section>
+    </div>
+    `}
   `);
 }
 
+function selectRequestTab(tab) {
+  requestTab = tab;
+  render();
+}
+
+function openOverdueManagementDialog(reservationId, opener = null) {
+  refreshLibraryData();
+  const reservation = getReservation(reservationId);
+  if (!reservation || !reservation.pickedUpAt ||
+      ![BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(reservation.status) ||
+      !['student', 'teacher'].includes(String(reservation.userRole || '').toLowerCase()) ||
+      reservation.returnedAt ||
+      reservation.status === RETURNED_STATUS ||
+      !Number.isFinite(Date.parse(reservation.dueAt)) ||
+      Date.parse(reservation.dueAt) > Date.now()) {
+    showAdminInlineNotification('This reservation is no longer overdue.', 'error');
+    render();
+    return;
+  }
+  overdueManagementReservationId = reservation.reservationId;
+  overdueManagementOpener = opener;
+  document.getElementById('overdueManagementSubtitle').textContent =
+    `${reservation.title} · ${reservation.userName}`;
+  document.getElementById('overdueManagementContent').innerHTML = `
+    <div class="manage-info-grid">
+      ${renderManagementDetails('Overdue Reservation', [
+        ['Book title', reservation.title],
+        ['Borrower name', reservation.userName],
+        ['Account ID', reservation.userId || 'Not provided'],
+        ['Account role', reservation.userRole.toLowerCase() === 'teacher' ? 'Teacher' : 'Student'],
+        ['Reservation ID', reservation.reservationId],
+        ['Borrowing date', formatManilaDateTime(reservation.pickedUpAt)],
+        ['Due date', formatManilaDateTime(reservation.dueAt)],
+        ['Current overdue status', 'OVERDUE']
+      ])}
+      ${renderManagementDetails('Penalty Information', [
+        ['Penalty amount', reservation.penaltyAmount == null
+          ? `₱${Number(getPenaltyAmount()).toLocaleString('en-PH')} (current setting)`
+          : `₱${Number(reservation.penaltyAmount).toLocaleString('en-PH')}`],
+        ['Penalty status', reservation.penaltyStatus || 'Unresolved']
+      ])}
+    </div>
+  `;
+  const message = document.getElementById('overdueManagementMessage');
+  message.textContent = '';
+  message.hidden = true;
+  message.classList.remove('is-success', 'is-error');
+  const notifyButton = document.getElementById('overdueNotifyButton');
+  notifyButton.disabled = reminderCooldowns.has(reservation.reservationId);
+  notifyButton.removeAttribute('aria-busy');
+  notifyButton.textContent = reservation.userRole.toLowerCase() === 'teacher'
+    ? 'Notify Teacher'
+    : 'Notify Student';
+  document.getElementById('overdueManagementDialog').showModal();
+}
+
+function closeOverdueManagementDialog() {
+  const dialog = document.getElementById('overdueManagementDialog');
+  if (dialog.open) dialog.close();
+}
+
+function confirmOverduePhysicalReturn() {
+  const reservationId = overdueManagementReservationId;
+  if (!reservationId) return;
+  closeOverdueManagementDialog();
+  confirmReturn(reservationId);
+}
+
+function sendOverdueReminderFromDialog() {
+  const reservationId = overdueManagementReservationId;
+  const button = document.getElementById('overdueNotifyButton');
+  if (!reservationId || remindersInProgress.has(reservationId)) return;
+  remindersInProgress.add(reservationId);
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  const message = document.getElementById('overdueManagementMessage');
+  message.hidden = true;
+  try {
+    const notification = createOverdueReminder(reservationId);
+    message.textContent =
+      `Overdue reminder sent to ${notification.recipientRole} ${notification.recipientId}.`;
+    message.classList.add('is-success');
+    message.classList.remove('is-error');
+    message.hidden = false;
+    const cooldown = window.setTimeout(() => {
+      reminderCooldowns.delete(reservationId);
+      if (overdueManagementReservationId === reservationId) {
+        button.disabled = false;
+      }
+    }, 1200);
+    reminderCooldowns.set(reservationId, cooldown);
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add('is-error');
+    message.classList.remove('is-success');
+    message.hidden = false;
+  } finally {
+    remindersInProgress.delete(reservationId);
+    button.removeAttribute('aria-busy');
+    if (!reminderCooldowns.has(reservationId)) button.disabled = false;
+  }
+}
+
+document.getElementById('overdueManagementDialog').addEventListener('close', () => {
+  if (overdueManagementOpener && overdueManagementOpener.isConnected) overdueManagementOpener.focus();
+  overdueManagementOpener = null;
+  overdueManagementReservationId = null;
+});
+
+document.getElementById('overdueManagementDialog').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeOverdueManagementDialog();
+});
+
 function renderActivityHistory() {
-  const activity = getLibraryActivity().slice().reverse();
-  if (!activity.length) return '<p class="meta">No activity recorded yet.</p>';
-  return `<div class="activity-cards">${activity.map(item => `
-    <article class="activity-card">
-      <strong>${escapeHtml(item.action)}</strong>
-      <span>${escapeHtml(item.bookTitle)} · ${escapeHtml(item.userName)}</span>
-      <span>${formatManilaDateTime(item.timestamp)}${item.adminName ? ` · Admin: ${escapeHtml(item.adminName)}` : ''}</span>
-      <small>Reservation #${escapeHtml(item.reservationId)}</small>
-    </article>
-  `).join('')}</div>`;
+  const reservationsById = new Map(reservations.map(reservation => [
+    String(reservation.reservationId),
+    reservation
+  ]));
+  const query = activityHistorySearch.trim().toLowerCase();
+  const activity = getLibraryActivity()
+    .map((item, index) => {
+      const reservation = reservationsById.get(String(item.reservationId));
+      const timestamp = Date.parse(item.timestamp);
+      const date = Number.isFinite(timestamp) ? new Date(timestamp) : null;
+      const dateParts = date
+        ? new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Manila',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).formatToParts(date).reduce((parts, part) => {
+          if (part.type !== 'literal') parts[part.type] = part.value;
+          return parts;
+        }, {})
+        : null;
+      return {
+        item,
+        index,
+        timestamp,
+        dateKey: dateParts ? `${dateParts.year}-${dateParts.month}-${dateParts.day}` : 'unknown',
+        dateLabel: date
+          ? new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Manila',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          }).format(date)
+          : 'Unknown date',
+        accountId: item.userId || item.accountId || (reservation && reservation.userId) || ''
+      };
+    })
+    .filter(entry => !query || [
+      entry.item.userName,
+      entry.accountId,
+      entry.item.bookTitle,
+      entry.item.reservationId,
+      entry.item.action,
+      entry.item.description
+    ].some(value => String(value || '').toLowerCase().includes(query)))
+    .sort((left, right) => {
+      const leftTime = Number.isFinite(left.timestamp) ? left.timestamp : -Infinity;
+      const rightTime = Number.isFinite(right.timestamp) ? right.timestamp : -Infinity;
+      return rightTime - leftTime || right.index - left.index;
+    });
+
+  if (!activity.length) {
+    return `<div class="activity-history-body">
+      <input class="search activity-search" type="search" aria-label="Search activity history"
+        placeholder="Search by name, account ID, book, reservation ID, or activity..."
+        value="${escapeHtml(activityHistorySearch)}" oninput="updateActivityHistorySearch(this)">
+      <p class="activity-empty-state">${query ? 'No matching activity was found.' : 'No activity recorded yet.'}</p>
+    </div>`;
+  }
+
+  const visible = activity.slice(0, activityHistoryVisibleCount);
+  const groups = [];
+  visible.forEach(entry => {
+    let group = groups[groups.length - 1];
+    if (!group || group.dateKey !== entry.dateKey) {
+      group = {
+        dateKey: entry.dateKey,
+        dateLabel: entry.dateLabel,
+        entries: [],
+        totalCount: 0
+      };
+      groups.push(group);
+    }
+    group.entries.push(entry);
+  });
+  const groupCounts = new Map();
+  activity.forEach(entry => groupCounts.set(entry.dateKey, (groupCounts.get(entry.dateKey) || 0) + 1));
+
+  return `<div class="activity-history-body">
+    <input class="search activity-search" type="search" aria-label="Search activity history"
+      placeholder="Search by name, account ID, book, reservation ID, or activity..."
+      value="${escapeHtml(activityHistorySearch)}" oninput="updateActivityHistorySearch(this)">
+    <p class="activity-results-count">Showing ${visible.length} of ${activity.length} matching activities</p>
+    <div class="activity-date-groups">
+      ${groups.map(group => {
+        const totalCount = groupCounts.get(group.dateKey);
+        const groupCountLabel = group.entries.length < totalCount
+          ? `${group.entries.length} of ${totalCount} activities`
+          : `${totalCount} ${totalCount === 1 ? 'activity' : 'activities'}`;
+        return `<section class="activity-date-group">
+          <h5>${escapeHtml(group.dateLabel)} <span>${groupCountLabel}</span></h5>
+          <div class="activity-cards">${group.entries.map(({ item, accountId }) => `
+            <article class="activity-card">
+              <strong>${escapeHtml(item.action || item.description || 'Activity')}</strong>
+              <span>${escapeHtml(item.bookTitle || 'Book title unavailable')} · ${escapeHtml(item.userName || 'Unknown user')}</span>
+              ${accountId ? `<span class="activity-account-id">Account ID: ${escapeHtml(accountId)}</span>` : ''}
+              <span>${escapeHtml(formatManilaDateTime(item.timestamp))}${item.adminName ? ` · Admin: ${escapeHtml(item.adminName)}` : ''}</span>
+              <small>Reservation #${escapeHtml(item.reservationId || '—')}</small>
+            </article>
+          `).join('')}</div>
+        </section>`;
+      }).join('')}
+    </div>
+    ${visible.length < activity.length
+      ? `<button class="btn activity-show-more" type="button" onclick="showMoreActivityHistory()">Show More</button>`
+      : ''}
+  </div>`;
+}
+
+function updateActivityHistorySearch(input) {
+  activityHistorySearch = input.value;
+  activityHistoryVisibleCount = 10;
+  const cursor = input.selectionStart;
+  render();
+  const updatedInput = document.querySelector('.activity-search');
+  if (updatedInput) {
+    updatedInput.focus();
+    updatedInput.setSelectionRange(cursor, cursor);
+  }
+}
+
+function showMoreActivityHistory() {
+  activityHistoryVisibleCount += 10;
+  render();
 }
 
 let manageDialogOpener = null;
@@ -341,11 +795,28 @@ function renderManagementActions(reservation) {
       <button class="btn manage-action-primary" type="button" data-manage-action="pickup" data-reservation-id="${id}">Mark as Picked Up</button>`;
   }
   if ([BORROWED_STATUS, DUE_SOON_STATUS].includes(reservation.status)) {
-    return `<button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Return</button>`;
+    return `
+      ${reservation.returnScheduleStatus === 'Return Schedule Pending' ? `
+        <button class="btn manage-action-primary" type="button" data-manage-action="confirm-return-schedule" data-reservation-id="${id}">Confirm Return Schedule</button>
+        <button class="btn manage-action-secondary" type="button" data-manage-action="update-return-schedule" data-reservation-id="${id}">Update Return Schedule</button>
+        <button class="btn manage-action-danger" type="button" data-manage-action="decline-return-schedule" data-reservation-id="${id}">Decline Return Schedule</button>
+      ` : ''}
+      ${reservation.returnScheduleStatus === 'Return Schedule Confirmed' ? `
+        <button class="btn manage-action-secondary" type="button" data-manage-action="update-return-schedule" data-reservation-id="${id}">Update Return Schedule</button>
+      ` : ''}
+      <button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Physical Return</button>`;
   }
   if (reservation.status === OVERDUE_STATUS) {
     return `
-      <button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Return</button>
+      ${reservation.returnScheduleStatus === 'Return Schedule Pending' ? `
+        <button class="btn manage-action-primary" type="button" data-manage-action="confirm-return-schedule" data-reservation-id="${id}">Confirm Return Schedule</button>
+        <button class="btn manage-action-secondary" type="button" data-manage-action="update-return-schedule" data-reservation-id="${id}">Update Return Schedule</button>
+        <button class="btn manage-action-danger" type="button" data-manage-action="decline-return-schedule" data-reservation-id="${id}">Decline Return Schedule</button>
+      ` : ''}
+      ${reservation.returnScheduleStatus === 'Return Schedule Confirmed' ? `
+        <button class="btn manage-action-secondary" type="button" data-manage-action="update-return-schedule" data-reservation-id="${id}">Update Return Schedule</button>
+      ` : ''}
+      <button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Physical Return</button>
       <button class="btn manage-action-secondary" type="button" disabled title="Record the book return before resolving its penalty.">Resolve Penalty</button>
       <span class="manage-action-note">Penalty resolution is available after the return is recorded.</span>`;
   }
@@ -401,9 +872,16 @@ function openManageReservationDialog(reservationId, opener = null) {
         ['Preferred pickup date and time', formatManilaDateTime(reservation.preferredPickupAt)],
         ['Confirmed pickup schedule', formatManilaDateTime(reservation.confirmedPickupAt)],
         ['Actual pickup timestamp', formatManilaDateTime(reservation.pickedUpAt)],
-        ['Return due date', formatManilaDateTime(reservation.dueAt)],
+        ['Borrowing deadline', formatManilaDateTime(reservation.dueAt)],
+        ['Actual physical return', formatManilaDateTime(reservation.returnedAt)],
         ['Remaining time', remaining],
-        ['Current status', reservation.status]
+        ['Current status', reservation.status],
+        ['Requested return date and time', formatManilaDateTime(reservation.requestedReturnAt)],
+        ['Confirmed return schedule', formatManilaDateTime(reservation.confirmedReturnScheduleAt)],
+        ['Return schedule status', reservation.returnScheduleStatus],
+        ['Schedule submitted', formatManilaDateTime(reservation.returnScheduleSubmittedAt)],
+        ['Borrower note', reservation.returnScheduleNote],
+        ['Schedule decision note', reservation.returnScheduleResolutionNote]
       ])}
       ${penaltyRelevant ? renderManagementDetails('Penalty Information', [
         ['Penalty amount', penaltyAmount == null ? '—' : `₱${Number(penaltyAmount).toLocaleString('en-PH')}`],
@@ -454,6 +932,9 @@ document.getElementById('manageReservationActions').addEventListener('click', ev
   else if (action === 'reschedule') openPickupScheduleDialog(reservationId);
   else if (action === 'pickup') markPickedUp(reservationId);
   else if (action === 'return') confirmReturn(reservationId);
+  else if (action === 'confirm-return-schedule') confirmBorrowerReturnSchedule(reservationId);
+  else if (action === 'update-return-schedule') openAdminReturnScheduleDialog(reservationId);
+  else if (action === 'decline-return-schedule') openDeclineReturnScheduleDialog(reservationId);
   else if (action === 'paid') resolvePenalty(reservationId, 'Paid');
   else if (action === 'waive') openWaivePenaltyDialog(reservationId);
 });
@@ -562,6 +1043,66 @@ function confirmReturn(reservationId) {
   });
 }
 
+function confirmBorrowerReturnSchedule(reservationId) {
+  openLibraryDialog({
+    title: 'Confirm Return Schedule',
+    description: 'Confirm the borrower’s requested return schedule. This does not mark the book as physically returned.',
+    confirmText: 'Confirm Schedule',
+    onConfirm() {
+      confirmReturnSchedule(reservationId, getCurrentUser());
+      render();
+    },
+    successMessage: 'Return schedule confirmed. The borrowing timer continues until physical return.'
+  });
+}
+
+function openAdminReturnScheduleDialog(reservationId) {
+  const reservation = getReservation(reservationId);
+  if (!reservation) return;
+  const savedSchedule = reservation.requestedReturnAt || reservation.confirmedReturnScheduleAt;
+  const scheduleTimestamp = Date.parse(savedSchedule);
+  const schedule = savedSchedule && scheduleTimestamp > Date.now()
+    ? getManilaScheduleFields(savedSchedule)
+    : getManilaDateTimeParts(new Date(Date.now() + 86400000));
+  const dueAt = Date.parse(reservation.dueAt);
+  const maxDate = Number.isFinite(dueAt) && dueAt > Date.now()
+    ? getManilaDateTimeParts(new Date(dueAt)).date
+    : undefined;
+  openLibraryDialog({
+    title: 'Update Return Schedule',
+    description: 'Set the confirmed return schedule. The borrowing deadline and actual physical return remain separate.',
+    details: [{ label: 'Borrower request', value: formatManilaDateTime(reservation.requestedReturnAt) }],
+    fields: [
+      { name: 'returnDate', label: 'Confirmed return date (Asia/Manila)', type: 'date', min: getManilaDateTimeParts().date, max: maxDate, value: schedule.date, required: true },
+      { name: 'returnTime', label: 'Confirmed return time', type: 'time', value: schedule.time, required: true }
+    ],
+    confirmText: 'Save Return Schedule',
+    onConfirm(values) {
+      updateReturnSchedule(
+        reservationId,
+        parseManilaDateTime(values.returnDate, values.returnTime),
+        getCurrentUser()
+      );
+      render();
+    },
+    successMessage: 'Return schedule updated and confirmed.'
+  });
+}
+
+function openDeclineReturnScheduleDialog(reservationId) {
+  openLibraryDialog({
+    title: 'Decline Return Schedule',
+    description: 'The borrower can submit a new return schedule after this request is declined.',
+    fields: [{ name: 'reason', label: 'Reason (optional)', type: 'textarea', rows: 3 }],
+    confirmText: 'Decline Schedule',
+    onConfirm(values) {
+      declineReturnSchedule(reservationId, values.reason, getCurrentUser());
+      render();
+    },
+    successMessage: 'Return schedule declined.'
+  });
+}
+
 function resolvePenalty(reservationId, resolution, reason = '') {
   try {
     resolveReservationPenalty(reservationId, resolution, reason, getCurrentUser());
@@ -587,6 +1128,8 @@ function openWaivePenaltyDialog(reservationId) {
 }
 
 function saveAdminSettings() {
+  const form = document.querySelector('.admin-settings-page');
+  clearAdminFormErrors(form);
   const hoursInput = document.getElementById('borrowingDuration');
   const amountInput = document.getElementById('penaltyAmount');
   const thresholdInput = document.getElementById('dueSoonThreshold');
@@ -596,18 +1139,29 @@ function saveAdminSettings() {
   const hours = Number(hoursText);
   const amount = Number(amountText);
   const threshold = Number(thresholdText);
-  if (!/^\d+$/.test(hoursText) || !Number.isSafeInteger(hours) || hours <= 0 ||
-      !/^\d+$/.test(amountText) || !Number.isSafeInteger(amount) ||
-      !/^\d+$/.test(thresholdText) || !Number.isSafeInteger(threshold)) {
-    showLibraryToast('Enter valid whole-number settings. Duration must be positive; amounts and warning threshold cannot be negative.', 'error');
+  const errors = [];
+  if (!/^\d+$/.test(hoursText) || !Number.isSafeInteger(hours) || hours <= 0) {
+    errors.push([hoursInput, 'Enter a positive whole number of hours.']);
+  }
+  if (!/^\d+$/.test(amountText) || !Number.isSafeInteger(amount) || amount < 0) {
+    errors.push([amountInput, 'Enter a non-negative whole-number amount.']);
+  }
+  if (!/^\d+$/.test(thresholdText) || !Number.isSafeInteger(threshold) || threshold < 0) {
+    errors.push([thresholdInput, 'Enter a non-negative whole number of hours.']);
+  }
+  if (errors.length) {
+    setAdminFormMessage(
+      form,
+      'Check the highlighted settings and correct the values before saving.'
+    );
+    errors.forEach(([input, message]) => setAdminFieldError(input, message));
     return;
   }
   try {
-    saveLibrarySettings(hours, amount, threshold, document.getElementById('overdueNotificationMode').value);
-    render();
-    showLibraryToast('Library settings saved.');
+    saveLibrarySettings(hours, amount, threshold);
+    setAdminFormMessage(form, 'Library settings saved.', 'success');
   } catch (error) {
-    showLibraryToast(error.message, 'error');
+    setAdminFormMessage(form, error.message);
   }
 }
 
@@ -650,41 +1204,190 @@ function renderSummary() {
 function renderSettings(content) {
   content.insertAdjacentHTML('beforeend', `
     <h3 class="admin-page-title">Settings</h3>
-    <form class="admin-settings-page" onsubmit="event.preventDefault();saveAdminSettings()">
+    <form class="admin-settings-page" novalidate onsubmit="event.preventDefault();saveAdminSettings()">
+      <div class="admin-inline-message" data-admin-form-message role="alert" aria-live="polite" hidden></div>
       <section class="settings-section">
         <h4>Borrowing Rules</h4>
         <p>Changes apply to books marked as picked up from now on. Existing return deadlines remain unchanged.</p>
         <label for="borrowingDuration">Default borrowing duration (hours)</label>
-        <input id="borrowingDuration" type="number" min="1" step="1" value="${getBorrowingDurationHours()}" required>
+        <div class="admin-form-field">
+          <input id="borrowingDuration" type="number" min="1" step="1" value="${getBorrowingDurationHours()}" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
       </section>
       <section class="settings-section">
         <h4>Penalty Configuration</h4>
         <p>Future overdue records use this amount. Existing penalty amounts are retained.</p>
         <label for="penaltyAmount">Penalty amount in PHP <span class="demo-label">DEMO PLACEHOLDER</span></label>
-        <input id="penaltyAmount" type="number" min="0" step="1" value="${getPenaltyAmount()}" required>
+        <div class="admin-form-field">
+          <input id="penaltyAmount" type="number" min="0" step="1" value="${getPenaltyAmount()}" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
       </section>
       <section class="settings-section">
         <h4>Return Notifications</h4>
         <label for="dueSoonThreshold">Due-soon notification threshold (hours)</label>
-        <input id="dueSoonThreshold" type="number" min="0" step="1" value="${getDueSoonThresholdHours()}" required>
-        <label for="overdueNotificationMode">Overdue notification behavior</label>
-        <select id="overdueNotificationMode">
-          <option value="banner" ${getOverdueNotificationMode() === 'banner' ? 'selected' : ''}>Show an overdue banner on Requests</option>
-          <option value="status-only" ${getOverdueNotificationMode() === 'status-only' ? 'selected' : ''}>Show overdue status only</option>
-        </select>
+        <div class="admin-form-field">
+          <input id="dueSoonThreshold" type="number" min="0" step="1" value="${getDueSoonThresholdHours()}" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
       </section>
       <button class="btn settings-save" type="submit">Save Settings</button>
     </form>
   `);
 }
 
+function submitStudentRegistration(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  clearAdminFormErrors(form);
+  const nameInput = form.elements.studentName;
+  const idInput = form.elements.studentId;
+  const passwordInput = form.elements.studentPassword;
+  if (!nameInput.value.trim() || !idInput.value.trim() || !passwordInput.value.trim()) {
+    const requiredFields = [
+      [nameInput, 'Student Name is required.'],
+      [idInput, 'Student ID is required.'],
+      [passwordInput, 'Password is required.']
+    ];
+    const errors = requiredFields.filter(([input]) => !input.value.trim());
+    setAdminFormMessage(form, 'Complete all required fields before registering.');
+    errors.forEach(([input, message]) => setAdminFieldError(input, message));
+    (errors[0] && errors[0][0]).focus();
+    return;
+  }
+  try {
+    registerLibraryStudent(
+      nameInput.value,
+      idInput.value,
+      passwordInput.value
+    );
+    form.reset();
+    render();
+    showAdminInlineNotification(
+      'Student account registered successfully.',
+      'success',
+      document.querySelector('.account-registration-form')
+    );
+  } catch (error) {
+    const duplicateId = error.message.includes('already exists');
+    const input = error.message.includes('Student ID') || duplicateId
+      ? idInput
+      : error.message.includes('Password')
+        ? passwordInput
+        : nameInput;
+    const message = duplicateId
+      ? 'An account with this Student ID already exists. Please use a different ID.'
+      : error.message;
+    setAdminFormMessage(form, message);
+    setAdminFieldError(input, duplicateId ? 'Choose a unique Student ID.' : error.message);
+    input.focus();
+  }
+}
+
+function updateAdminAccountSearch(input) {
+  adminAccountSearch = input.value;
+  const cursor = input.selectionStart;
+  render();
+  const updatedInput = document.getElementById('accountSearch');
+  updatedInput.focus();
+  updatedInput.setSelectionRange(cursor, cursor);
+}
+
+function saveManagedAccountName(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  clearAdminFormErrors(form);
+  const accountId = form.dataset.accountId;
+  try {
+    const account = updateLibraryAccountName(accountId, form.elements.accountName.value);
+    updateReservationUserName(account.id, account.role, account.name, getCurrentUser());
+    render();
+    const updatedForm = Array.from(document.querySelectorAll('.account-name-form'))
+      .find(accountForm => accountForm.dataset.accountId === account.id);
+    showAdminInlineNotification(
+      `${account.role === 'student' ? 'Student' : 'Teacher'} account updated successfully.`,
+      'success',
+      updatedForm
+    );
+  } catch (error) {
+    const input = form.elements.accountName;
+    setAdminFormMessage(form, error.message);
+    setAdminFieldError(input, error.message);
+    input.focus();
+  }
+}
+
+function renderRegisterStudent(content) {
+  const query = adminAccountSearch.trim().toLowerCase();
+  const accounts = getLibraryAccounts()
+    .filter(account => ['student', 'teacher'].includes(account.role))
+    .filter(account => !query ||
+      account.name.toLowerCase().includes(query) ||
+      account.id.toLowerCase().includes(query));
+
+  content.insertAdjacentHTML('beforeend', `
+    <h3 class="admin-page-title">Register Student</h3>
+    <section class="settings-section account-registration-section">
+      <h4>New Student Account</h4>
+      <p>Student accounts are created in this browser's local storage and can sign in using their Student ID and password.</p>
+      <form class="account-registration-form" novalidate onsubmit="submitStudentRegistration(event)">
+        <div class="admin-inline-message" data-admin-form-message role="alert" aria-live="polite" hidden></div>
+        <div class="admin-form-field">
+          <label for="studentName">Student Name</label>
+          <input id="studentName" name="studentName" type="text" autocomplete="name" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <div class="admin-form-field">
+          <label for="studentId">Student ID</label>
+          <input id="studentId" name="studentId" type="text" autocomplete="off" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <div class="admin-form-field">
+          <label for="studentPassword">Password <span class="account-field-hint">(at least 6 characters)</span></label>
+          <input id="studentPassword" name="studentPassword" type="password" autocomplete="new-password" minlength="6" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <button class="btn settings-save" type="submit">Register Student</button>
+      </form>
+    </section>
+    <section class="account-management-section">
+      <h4>Manage Student and Teacher Accounts</h4>
+      <p>Search by name or account ID. Only account names can be changed here.</p>
+      <input id="accountSearch" class="search" aria-label="Search accounts by name or ID"
+        placeholder="Search accounts by name or ID..." value="${escapeHtml(adminAccountSearch)}"
+        oninput="updateAdminAccountSearch(this)">
+      ${accounts.length ? `<div class="account-management-list">${accounts.map(account => `
+        <article class="account-management-card">
+          <div class="account-management-identity">
+            <strong>${escapeHtml(account.name)}</strong>
+            <span>${escapeHtml(account.id)} · ${account.role === 'student' ? 'Student' : 'Teacher'}</span>
+          </div>
+          <form class="account-name-form" data-account-id="${escapeHtml(account.id)}"
+            novalidate onsubmit="saveManagedAccountName(event)">
+            <div class="admin-inline-message" data-admin-form-message role="alert" aria-live="polite" hidden></div>
+            <div class="admin-form-field">
+              <label for="account-name-${escapeHtml(account.id)}">Account Name</label>
+              <input id="account-name-${escapeHtml(account.id)}" name="accountName" type="text"
+                value="${escapeHtml(account.name)}" required>
+              <small class="admin-field-error" hidden></small>
+            </div>
+            <button class="btn manage-action-secondary" type="submit">Save Name</button>
+          </form>
+        </article>
+      `).join('')}</div>` : '<p class="account-empty-state">No student or teacher accounts match your search.</p>'}
+    </section>
+  `);
+}
+
 function render() {
   refreshLibraryData();
   const content = document.getElementById('content');
-  content.innerHTML = currentView === 'settings' ? '' : renderSummary();
+  content.innerHTML = currentView === 'books' ? renderSummary() : '';
   if (currentView === 'books') renderBooks(content);
   else if (currentView === 'requests') renderRequests(content);
   else if (currentView === 'settings') renderSettings(content);
+  else if (currentView === 'register') renderRegisterStudent(content);
   else renderAbout(content);
 }
 

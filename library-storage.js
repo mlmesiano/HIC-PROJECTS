@@ -12,7 +12,8 @@ const HELD_STATUSES = new Set([
 const DEFAULT_BORROWING_HOURS = 72;
 const DEFAULT_PENALTY_AMOUNT = 1000000;
 const DEFAULT_DUE_SOON_THRESHOLD_HOURS = 24;
-const DEFAULT_OVERDUE_NOTIFICATION_MODE = 'banner';
+const MAX_ACTIVE_RESERVATIONS = 5;
+const LIBRARY_NOTIFICATION_KEY = 'celtech_notifications';
 
 function createReservationId() {
   if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -73,6 +74,105 @@ function saveLibraryActivity(activity) {
   localStorage.setItem('celtech_activity', JSON.stringify(activity));
 }
 
+function getLibraryNotifications(user) {
+  const userKey = getUserKey(user);
+  const signedInUser = getCurrentUser();
+  if (!signedInUser || getUserKey(signedInUser) !== userKey) {
+    throw new Error('You can only view notifications for the signed-in account.');
+  }
+  const savedNotifications = localStorage.getItem(LIBRARY_NOTIFICATION_KEY);
+  if (savedNotifications === null) return [];
+  let notifications;
+  try {
+    notifications = JSON.parse(savedNotifications);
+  } catch {
+    throw new Error('Saved notifications are invalid.');
+  }
+  if (!Array.isArray(notifications)) throw new Error('Saved notifications are invalid.');
+  return notifications.filter(notification =>
+    notification && notification.recipientKey === userKey
+  );
+}
+
+function createOverdueReminder(reservationId) {
+  requireAdminUser();
+  refreshLibraryData();
+  const reservation = getReservation(reservationId);
+  if (!reservation || reservation.status !== OVERDUE_STATUS || !reservation.pickedUpAt || reservation.returnedAt ||
+      !reservation.dueAt || Date.parse(reservation.dueAt) > Date.now()) {
+    throw new Error('This reservation is no longer overdue.');
+  }
+  const role = normalizeRole(reservation.userRole);
+  if (!['student', 'teacher'].includes(role) || !reservation.userId) {
+    throw new Error('The overdue borrower account could not be identified.');
+  }
+  const account = typeof getLibraryAccountByIdentity === 'function'
+    ? getLibraryAccountByIdentity(reservation.userId, reservation.userName, role)
+    : null;
+  if (!account || account.role !== role || account.id !== String(reservation.userId)) {
+    throw new Error('The overdue borrower account could not be identified.');
+  }
+
+  const savedNotifications = localStorage.getItem(LIBRARY_NOTIFICATION_KEY);
+  let notifications = [];
+  if (savedNotifications !== null) {
+    try {
+      notifications = JSON.parse(savedNotifications);
+    } catch {
+      throw new Error('Saved notifications are invalid.');
+    }
+    if (!Array.isArray(notifications)) throw new Error('Saved notifications are invalid.');
+  }
+
+  const createNotificationId = () => window.crypto && typeof window.crypto.randomUUID === 'function'
+    ? window.crypto.randomUUID()
+    : `notification-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  let notificationId = createNotificationId();
+  while (notifications.some(item => item && item.notificationId === notificationId)) {
+    notificationId = createNotificationId();
+  }
+  const notification = {
+    notificationId,
+    type: 'Overdue Book Reminder',
+    bookTitle: reservation.title,
+    reservationId: reservation.reservationId,
+    recipientId: account.id,
+    recipientRole: role,
+    recipientKey: getUserKey(account),
+    dueAt: reservation.dueAt,
+    createdAt: new Date().toISOString(),
+    message: `Your borrowed book, ${reservation.title}, is overdue. Please coordinate with the Library Admin regarding its return.`,
+    read: false
+  };
+  notifications.push(notification);
+  localStorage.setItem(LIBRARY_NOTIFICATION_KEY, JSON.stringify(notifications));
+  return notification;
+}
+
+function markLibraryNotificationRead(notificationId, user) {
+  const userKey = getUserKey(user);
+  const signedInUser = getCurrentUser();
+  if (!signedInUser || getUserKey(signedInUser) !== userKey) {
+    throw new Error('You can only update notifications for the signed-in account.');
+  }
+  const savedNotifications = localStorage.getItem(LIBRARY_NOTIFICATION_KEY);
+  if (savedNotifications === null) return false;
+  let notifications;
+  try {
+    notifications = JSON.parse(savedNotifications);
+  } catch {
+    throw new Error('Saved notifications are invalid.');
+  }
+  if (!Array.isArray(notifications)) throw new Error('Saved notifications are invalid.');
+  const notification = notifications.find(item =>
+    item && item.notificationId === String(notificationId) && item.recipientKey === userKey
+  );
+  if (!notification || notification.read) return false;
+  notification.read = true;
+  localStorage.setItem(LIBRARY_NOTIFICATION_KEY, JSON.stringify(notifications));
+  return true;
+}
+
 function recordLibraryActivity(reservation, action, adminName = '') {
   const activity = getLibraryActivity();
   activity.push({
@@ -116,18 +216,28 @@ function loadReservations() {
     if (!Number.isInteger(bookId)) throw new Error('Saved reservation has an invalid book ID.');
     const userName = reservation.userName || reservation.name || 'Unknown user';
     const userRole = reservation.userRole || reservation.role || 'Unknown';
-    const userId = reservation.userId ?? reservation.studentId ?? '';
-    const userKey = reservation.userKey || (
+    let userId = reservation.userId ?? reservation.studentId ?? '';
+    let userKey = reservation.userKey || (
       userName !== 'Unknown user'
         ? getUserKey({ name: userName, role: userRole, id: userId })
         : `legacy:${userId || reservationId}`
     );
+    if (typeof getLibraryAccountByIdentity === 'function') {
+      const account = getLibraryAccountByIdentity(userId, userName, userRole);
+      if (account) {
+        const accountKey = getUserKey(account);
+        if (userId !== account.id || userKey !== accountKey) changed = true;
+        userId = account.id;
+        userKey = accountKey;
+      }
+    }
     const status = reservation.status === 'Active'
       ? PENDING_STATUS
       : reservation.status || PENDING_STATUS;
 
     if (!reservation.reservationId || reservation.bookId == null ||
         !reservation.userKey || !reservation.userName || !reservation.userRole ||
+        reservation.returnScheduleStatus == null ||
         reservation.status !== status) changed = true;
 
     return {
@@ -144,6 +254,13 @@ function loadReservations() {
       pickedUpAt: reservation.pickedUpAt || '',
       dueAt: reservation.dueAt || '',
       returnedAt: reservation.returnedAt || '',
+      requestedReturnAt: reservation.requestedReturnAt || '',
+      returnScheduleNote: reservation.returnScheduleNote || '',
+      returnScheduleSubmittedAt: reservation.returnScheduleSubmittedAt || '',
+      returnScheduleStatus: reservation.returnScheduleStatus || 'No Return Schedule',
+      confirmedReturnScheduleAt: reservation.confirmedReturnScheduleAt || '',
+      returnScheduleResolutionAt: reservation.returnScheduleResolutionAt || '',
+      returnScheduleResolutionNote: reservation.returnScheduleResolutionNote || '',
       date: reservation.date || new Date().toLocaleDateString(),
       status,
       penaltyStatus: reservation.penaltyStatus || 'No Penalty',
@@ -168,21 +285,11 @@ function loadSetting(key, fallback) {
   return parsed;
 }
 
-function loadOverdueNotificationMode() {
-  const mode = localStorage.getItem('celtech_overdue_notification_mode');
-  if (mode === null) return DEFAULT_OVERDUE_NOTIFICATION_MODE;
-  if (!['banner', 'status-only'].includes(mode)) {
-    throw new Error('Saved overdue notification setting is invalid.');
-  }
-  return mode;
-}
-
 let books = loadBooks();
 let reservations = loadReservations();
 let borrowingDurationHours = loadSetting('celtech_borrowing_duration_hours', DEFAULT_BORROWING_HOURS);
 let penaltyAmount = loadSetting('celtech_penalty_amount', DEFAULT_PENALTY_AMOUNT);
 let dueSoonThresholdHours = loadSetting('celtech_due_soon_threshold_hours', DEFAULT_DUE_SOON_THRESHOLD_HOURS);
-let overdueNotificationMode = loadOverdueNotificationMode();
 
 function saveBooks() {
   localStorage.setItem('celtech_books', JSON.stringify(books));
@@ -198,7 +305,6 @@ function refreshLibraryData() {
   borrowingDurationHours = loadSetting('celtech_borrowing_duration_hours', DEFAULT_BORROWING_HOURS);
   penaltyAmount = loadSetting('celtech_penalty_amount', DEFAULT_PENALTY_AMOUNT);
   dueSoonThresholdHours = loadSetting('celtech_due_soon_threshold_hours', DEFAULT_DUE_SOON_THRESHOLD_HOURS);
-  overdueNotificationMode = loadOverdueNotificationMode();
   updateBorrowingStatuses();
 }
 
@@ -207,10 +313,10 @@ function subscribeToLibraryUpdates(onUpdate) {
     'celtech_books',
     'celtech_final',
     'celtech_activity',
+    LIBRARY_NOTIFICATION_KEY,
     'celtech_borrowing_duration_hours',
     'celtech_penalty_amount',
-    'celtech_due_soon_threshold_hours',
-    'celtech_overdue_notification_mode'
+    'celtech_due_soon_threshold_hours'
   ]);
   window.addEventListener('storage', event => {
     if (!keys.has(event.key)) return;
@@ -275,16 +381,7 @@ function getDueSoonThresholdHours() {
   return dueSoonThresholdHours;
 }
 
-function getOverdueNotificationMode() {
-  return overdueNotificationMode;
-}
-
-function saveLibrarySettings(
-  hours,
-  amount,
-  dueSoonHours = dueSoonThresholdHours,
-  notificationMode = overdueNotificationMode
-) {
+function saveLibrarySettings(hours, amount, dueSoonHours = dueSoonThresholdHours) {
   if (!Number.isSafeInteger(hours) || hours <= 0) {
     throw new Error('Borrowing duration must be a positive whole number of hours.');
   }
@@ -294,17 +391,12 @@ function saveLibrarySettings(
   if (!Number.isSafeInteger(dueSoonHours) || dueSoonHours < 0) {
     throw new Error('Due-soon threshold must be a non-negative whole number of hours.');
   }
-  if (!['banner', 'status-only'].includes(notificationMode)) {
-    throw new Error('Select a valid overdue notification behavior.');
-  }
   borrowingDurationHours = hours;
   penaltyAmount = amount;
   dueSoonThresholdHours = dueSoonHours;
-  overdueNotificationMode = notificationMode;
   localStorage.setItem('celtech_borrowing_duration_hours', String(hours));
   localStorage.setItem('celtech_penalty_amount', String(amount));
   localStorage.setItem('celtech_due_soon_threshold_hours', String(dueSoonHours));
-  localStorage.setItem('celtech_overdue_notification_mode', notificationMode);
 }
 
 function getBookReservationCount(bookId) {
@@ -325,6 +417,14 @@ function getUserReservations(user) {
 
 function getUserActiveReservations(user) {
   return getUserReservations(user).filter(reservation => HELD_STATUSES.has(reservation.status));
+}
+
+function getUserBorrowedReservations(user) {
+  return getUserReservations(user).filter(reservation =>
+    [BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(reservation.status) &&
+    Boolean(reservation.pickedUpAt) &&
+    !reservation.returnedAt
+  );
 }
 
 function addBookStock(bookId, quantity) {
@@ -402,6 +502,16 @@ function formatRemainingTime(dueAt) {
   return `${hours}h ${minutes}m remaining`;
 }
 
+function formatBorrowingCountdown(dueAt) {
+  const milliseconds = Date.parse(dueAt) - Date.now();
+  const absolute = Math.abs(milliseconds);
+  const hours = Math.floor(absolute / 3600000);
+  const minutes = Math.floor((absolute % 3600000) / 60000);
+  return milliseconds <= 0
+    ? `Overdue by ${hours} hours and ${minutes} minutes`
+    : `${hours} hours and ${minutes} minutes remaining`;
+}
+
 function reserveBook(bookId, user, preferredPickupAt) {
   refreshLibraryData();
   const book = books.find(item => item.id === Number(bookId));
@@ -411,7 +521,9 @@ function reserveBook(bookId, user, preferredPickupAt) {
   }
 
   const userReservations = getUserActiveReservations(user);
-  if (userReservations.length >= 3) throw new Error('Maximum of 3 active reservations per user.');
+  if (userReservations.length >= MAX_ACTIVE_RESERVATIONS) {
+    throw new Error(`Maximum of ${MAX_ACTIVE_RESERVATIONS} active reservations per user.`);
+  }
   if (userReservations.some(reservation => reservation.bookId === book.id)) {
     throw new Error('You already have an active request for this book.');
   }
@@ -431,6 +543,13 @@ function reserveBook(bookId, user, preferredPickupAt) {
     pickedUpAt: '',
     dueAt: '',
     returnedAt: '',
+    requestedReturnAt: '',
+    returnScheduleNote: '',
+    returnScheduleSubmittedAt: '',
+    returnScheduleStatus: 'No Return Schedule',
+    confirmedReturnScheduleAt: '',
+    returnScheduleResolutionAt: '',
+    returnScheduleResolutionNote: '',
     date: new Date().toLocaleDateString(),
     status: PENDING_STATUS,
     penaltyStatus: 'No Penalty',
@@ -516,6 +635,97 @@ function declineReservation(reservationId, reason, admin) {
   recordLibraryActivity(reservation, 'Request declined', getAdminName(admin));
 }
 
+function validateReturnScheduleDate(reservation, requestedReturnAt) {
+  const timestamp = Date.parse(requestedReturnAt);
+  if (typeof requestedReturnAt !== 'string' || !Number.isFinite(timestamp) ||
+      new Date(timestamp).toISOString() !== requestedReturnAt || timestamp <= Date.now()) {
+    throw new Error('Choose a valid return date and time in the future.');
+  }
+  const dueTimestamp = Date.parse(reservation.dueAt);
+  if (Number.isFinite(dueTimestamp) && dueTimestamp > Date.now() && timestamp > dueTimestamp) {
+    throw new Error('The requested return schedule cannot be later than the borrowing deadline.');
+  }
+}
+
+function submitReturnSchedule(reservationId, user, requestedReturnAt, note = '') {
+  if (!user || !['student', 'teacher'].includes(normalizeRole(user.role))) {
+    throw new Error('Only a student or teacher borrower can submit a return schedule.');
+  }
+  refreshLibraryData();
+  const reservation = getReservation(reservationId);
+  if (!reservation || reservation.userKey !== getUserKey(user) ||
+      ![BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(reservation.status)) {
+    throw new Error('A return schedule can only be submitted for your currently borrowed book.');
+  }
+  if (reservation.returnScheduleStatus === 'Return Schedule Confirmed') {
+    throw new Error('The return schedule is already confirmed. Contact the library to request a change.');
+  }
+  validateReturnScheduleDate(reservation, requestedReturnAt);
+  reservation.requestedReturnAt = requestedReturnAt;
+  reservation.returnScheduleNote = String(note || '').trim();
+  reservation.returnScheduleSubmittedAt = new Date().toISOString();
+  reservation.returnScheduleStatus = 'Return Schedule Pending';
+  reservation.returnScheduleResolutionAt = '';
+  reservation.returnScheduleResolutionNote = '';
+  saveReservations();
+  recordLibraryActivity(reservation, 'Return schedule submitted');
+  return reservation;
+}
+
+function getBorrowedReservationForAdmin(reservationId) {
+  const reservation = getReservation(reservationId);
+  if (!reservation || ![BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS].includes(reservation.status)) {
+    throw new Error('Return schedules can only be managed while the book is borrowed.');
+  }
+  return reservation;
+}
+
+function confirmReturnSchedule(reservationId, admin) {
+  admin = requireAdminUser();
+  refreshLibraryData();
+  const reservation = getBorrowedReservationForAdmin(reservationId);
+  if (reservation.returnScheduleStatus !== 'Return Schedule Pending') {
+    throw new Error('There is no pending return schedule to confirm.');
+  }
+  validateReturnScheduleDate(reservation, reservation.requestedReturnAt);
+  reservation.confirmedReturnScheduleAt = reservation.requestedReturnAt;
+  reservation.returnScheduleStatus = 'Return Schedule Confirmed';
+  reservation.returnScheduleResolutionAt = new Date().toISOString();
+  reservation.returnScheduleResolutionNote = '';
+  saveReservations();
+  recordLibraryActivity(reservation, 'Return schedule confirmed', getAdminName(admin));
+}
+
+function updateReturnSchedule(reservationId, returnAt, admin) {
+  admin = requireAdminUser();
+  refreshLibraryData();
+  const reservation = getBorrowedReservationForAdmin(reservationId);
+  if (!['Return Schedule Pending', 'Return Schedule Confirmed'].includes(reservation.returnScheduleStatus)) {
+    throw new Error('Only a pending or confirmed return schedule can be updated.');
+  }
+  validateReturnScheduleDate(reservation, returnAt);
+  reservation.confirmedReturnScheduleAt = returnAt;
+  reservation.returnScheduleStatus = 'Return Schedule Confirmed';
+  reservation.returnScheduleResolutionAt = new Date().toISOString();
+  reservation.returnScheduleResolutionNote = '';
+  saveReservations();
+  recordLibraryActivity(reservation, 'Return schedule updated', getAdminName(admin));
+}
+
+function declineReturnSchedule(reservationId, reason, admin) {
+  admin = requireAdminUser();
+  refreshLibraryData();
+  const reservation = getBorrowedReservationForAdmin(reservationId);
+  if (reservation.returnScheduleStatus !== 'Return Schedule Pending') {
+    throw new Error('There is no pending return schedule to decline.');
+  }
+  reservation.returnScheduleStatus = 'Return Schedule Declined';
+  reservation.returnScheduleResolutionAt = new Date().toISOString();
+  reservation.returnScheduleResolutionNote = String(reason || '').trim();
+  saveReservations();
+  recordLibraryActivity(reservation, 'Return schedule declined', getAdminName(admin));
+}
+
 function markReservationPickedUp(reservationId, admin) {
   admin = requireAdminUser();
   refreshLibraryData();
@@ -589,11 +799,41 @@ function cancelReservation(reservationId, user) {
   return true;
 }
 
+function updateReservationUserName(accountId, role, name, admin) {
+  admin = requireAdminUser();
+  refreshLibraryData();
+  const accountKey = getUserKey({ id: accountId, role });
+  let changed = false;
+  reservations.forEach(reservation => {
+    if (reservation.userKey === accountKey && reservation.userName !== name) {
+      reservation.userName = name;
+      changed = true;
+    }
+  });
+  if (changed) saveReservations();
+}
+
 function getCurrentUser() {
   const savedUser = localStorage.getItem('celtech_user');
   if (savedUser === null) return null;
   const user = JSON.parse(savedUser);
-  return user && typeof user === 'object' ? user : null;
+  if (!user || typeof user !== 'object') return null;
+  if (typeof getLibraryAccountByIdentity === 'function') {
+    const account = getLibraryAccountByIdentity(user.id, user.name, user.role);
+    if (account) {
+      const current = {
+        name: account.name,
+        role: account.role,
+        id: account.id,
+        accountUid: account.accountUid
+      };
+      if (JSON.stringify(user) !== JSON.stringify(current)) {
+        localStorage.setItem('celtech_user', JSON.stringify(current));
+      }
+      return current;
+    }
+  }
+  return user;
 }
 
 function requireDashboardRole(role) {
@@ -630,8 +870,9 @@ function escapeHtml(value) {
 }
 
 window.addEventListener('storage', event => {
-  if (['celtech_books', 'celtech_final', 'celtech_activity', 'celtech_borrowing_duration_hours', 'celtech_penalty_amount', 'celtech_due_soon_threshold_hours', 'celtech_overdue_notification_mode'].includes(event.key)) {
+  if (['celtech_books', 'celtech_final', 'celtech_activity', LIBRARY_NOTIFICATION_KEY, 'celtech_borrowing_duration_hours', 'celtech_penalty_amount', 'celtech_due_soon_threshold_hours', 'celtech_accounts', 'celtech_account_profiles', 'celtech_account_passwords', 'celtech_passwords'].includes(event.key)) {
     refreshLibraryData();
+    if (typeof updateProfile === 'function') updateProfile();
     if (typeof render === 'function') render();
   }
 });

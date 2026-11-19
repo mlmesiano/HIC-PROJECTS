@@ -29,7 +29,7 @@
     <div id="loginError" role="alert"></div>
 
     <div class="field">
-      <input type="text" id="loginName" placeholder="Name" autocomplete="username">
+      <input type="text" id="loginName" placeholder="Account ID" autocomplete="username">
     </div>
     <div class="field">
       <input type="password" id="loginId" placeholder="Password" autocomplete="current-password">
@@ -40,7 +40,7 @@
 
     <button type="button" class="link-btn fp-link" id="forgotLink" onclick="openForgot()">Forgot Password?</button>
 
-    <p class="hint" id="loginHint">Demo: student / password</p>
+    <p class="hint" id="loginHint">Demo ID: 202411059 / password</p>
     <button class="link-btn" id="adminLink" onclick="setRole('admin')">Library staff? Admin login</button>
   </div>
 </div>
@@ -97,6 +97,7 @@
   <button onclick="logout()">Log out</button>
 </div>
 
+<script src="account-storage.js"></script>
 <script>
 // ================== SET YOUR PAGE LINKS HERE ==================
 // Where each role goes after a successful login.
@@ -108,21 +109,11 @@ const pages = {
 };
 // ===============================================================
 
-// ---------- Demo accounts (one portal, 3 roles) ----------
-const accounts = {
-  student: { name: "student", pass: "password" },
-  teacher: { name: "teacher", pass: "password" },
-  admin:   { name: "admin",   pass: "password" }
-};
-
-// Saved demo passwords (from Forgot Password) override the defaults above
-const FP_STORE = "celtech_passwords";
-try {
-  const savedPass = JSON.parse(localStorage.getItem(FP_STORE) || "{}");
-  Object.keys(savedPass).forEach(function (r) {
-    if (accounts[r] && savedPass[r]) accounts[r].pass = savedPass[r];
-  });
-} catch (e) { /* storage blocked: keep defaults */ }
+// Static demo accounts come from account-storage.js; registered accounts are browser-local.
+const accounts = Object.fromEntries(INITIAL_LIBRARY_ACCOUNTS.map(function (account) {
+  const saved = getLibraryAccountById(account.id);
+  return [account.role, { ...saved, pass: saved.password }];
+}));
 
 let currentRole = "student";
 let adminShown = false;
@@ -161,7 +152,7 @@ function setRole(role) {
   const label = role.charAt(0).toUpperCase() + role.slice(1);
   document.getElementById("loginTitle").textContent = label + " login";
   document.getElementById("loginHint").textContent =
-    "Demo: " + accounts[role].name + " / " + accounts[role].pass;
+    "Demo ID: " + accounts[role].id + " / " + accounts[role].pass;
 
   if (role === "admin" && !adminShown) {
     // 1) Admin tab pops in on the right  2) pill slides from Teacher to Admin
@@ -207,24 +198,23 @@ function doLogin() {
   const passInput = document.getElementById("loginId");
   const button = document.getElementById("loginButton");
 
-  const name = nameInput.value.trim();
+  const identifier = nameInput.value.trim();
   const pass = passInput.value.trim();
 
   clearValidation();
 
   // Empty fields -> red border
-  if (!name || !pass) {
+  if (!identifier || !pass) {
     showError("Please fill in all required fields.");
-    if (!name) nameInput.classList.add("login-input-error");
+    if (!identifier) nameInput.classList.add("login-input-error");
     if (!pass) passInput.classList.add("login-input-error");
-    (!name ? nameInput : passInput).focus();
+    (!identifier ? nameInput : passInput).focus();
     return;
   }
 
-  // Check against the selected role's account
-  const account = accounts[currentRole];
-  const correctName = name.toLowerCase() === account.name;
-  const correctPass = pass === account.pass;
+  const account = findLoginAccount(currentRole, identifier);
+  const correctName = Boolean(account);
+  const correctPass = Boolean(account && pass === account.password);
 
   if (!correctName || !correctPass) {
     nameInput.classList.add(correctName ? "login-input-valid" : "login-input-error");
@@ -238,7 +228,12 @@ function doLogin() {
   button.innerHTML = '<span class="login-spinner"></span>Logging in...';
 
   setTimeout(() => {
-    localStorage.setItem("celtech_user", JSON.stringify({ name: name, role: currentRole }));
+    localStorage.setItem("celtech_user", JSON.stringify({
+      name: account.name,
+      role: account.role,
+      id: account.id,
+      accountUid: account.accountUid
+    }));
 
     // Go to this role's page (if a link is set above)
     if (pages[currentRole]) {
@@ -253,7 +248,7 @@ function doLogin() {
     // Hook into your existing dashboard code here
     if (typeof updateProfile === "function") updateProfile();
     if (typeof render === "function") render();
-    showPortal(currentRole, name);
+    showPortal(currentRole, account.name);
   }, 1200);
 }
 window.doLogin = doLogin;
@@ -267,8 +262,7 @@ function validateLoginField(input) {
   if (!value) return;
 
   if (input.id === "loginName") {
-    // Name turns green only when it matches the account's record
-    if (value.toLowerCase() === accounts[currentRole].name) input.classList.add("login-input-valid");
+    if (findLoginAccount(currentRole, value)) input.classList.add("login-input-valid");
   } else {
     input.classList.add("login-input-valid");
   }
@@ -383,17 +377,18 @@ function verifyOtp() {
 function resetPassword() {
   const p1 = fpEl("fpNewPass"), p2 = fpEl("fpConfirmPass");
   clearFpError();
+  const newPassword = p1.value.trim();
 
   // Never allow a reset without a verified OTP
   if (!fpVerified) { showStep(1); return showFpError("Please verify your OTP first."); }
-  if (p1.value.length < 6) return showFpError("Password must be at least 6 characters.", p1);
-  if (p1.value !== p2.value) {
+  if (newPassword.length < 6) return showFpError("Password must be at least 6 characters.", p1);
+  if (newPassword !== p2.value.trim()) {
     p1.classList.add("login-input-error");
     return showFpError("Passwords do not match.", p2);
   }
 
-  accounts[fpRole].pass = p1.value;   // update the selected role's demo account
-  saveDemoPasswords();
+  saveLibraryAccountPassword(accounts[fpRole].id, newPassword);
+  accounts[fpRole].pass = newPassword;
 
   const label = fpRole.charAt(0).toUpperCase() + fpRole.slice(1);
   fpEl("fpSuccessText").textContent = "Your " + label + " password was updated. You can now log in with your new password.";
@@ -402,16 +397,8 @@ function resetPassword() {
   showStep(4);
 
   // keep the login page in sync
-  fpEl("loginHint").textContent = "Demo: " + accounts[currentRole].name + " / " + accounts[currentRole].pass;
+  fpEl("loginHint").textContent = "Demo ID: " + accounts[currentRole].id + " / " + accounts[currentRole].pass;
   document.getElementById("loginId").value = "";
-}
-
-function saveDemoPasswords() {
-  try {
-    const out = {};
-    Object.keys(accounts).forEach(function (r) { out[r] = accounts[r].pass; });
-    localStorage.setItem(FP_STORE, JSON.stringify(out));
-  } catch (e) { /* storage blocked */ }
 }
 
 // Click outside the modal to close
