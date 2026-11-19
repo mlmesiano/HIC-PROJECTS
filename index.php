@@ -138,6 +138,98 @@ const accounts = Object.fromEntries(INITIAL_LIBRARY_ACCOUNTS.map(function (accou
 
 let currentRole = "student";
 let adminShown = false;
+let loginRequestInProgress = false;
+let loginLockCheckTimer = null;
+let loginLockCountdownTimer = null;
+let loginLockSequence = 0;
+let lockedLoginIdentity = null;
+
+const loginLockWarning = "Too many failed login attempts. Please try again in 5 minutes.";
+
+function getLoginIdentity(role, identifier) {
+  return role + ":" + identifier.trim().toLowerCase();
+}
+
+function clearLoginLockUi() {
+  clearTimeout(loginLockCountdownTimer);
+  loginLockCountdownTimer = null;
+  lockedLoginIdentity = null;
+  document.getElementById("loginPassword").disabled = false;
+  document.getElementById("loginButton").disabled = loginRequestInProgress;
+  if (!loginRequestInProgress) document.getElementById("loginButton").textContent = "LOGIN";
+}
+
+function applyLoginLockState(result, role, identifier) {
+  const accountIdInput = document.getElementById("loginAccountId");
+  if (role !== currentRole ||
+      getLoginIdentity(role, identifier) !== getLoginIdentity(currentRole, accountIdInput.value)) {
+    return false;
+  }
+
+  const identity = getLoginIdentity(role, identifier);
+  clearTimeout(loginLockCountdownTimer);
+  if (result.locked) {
+    lockedLoginIdentity = identity;
+    document.getElementById("loginPassword").disabled = true;
+    document.getElementById("loginButton").disabled = true;
+    showError(loginLockWarning);
+    loginLockCountdownTimer = setTimeout(function () {
+      refreshLoginLock(role, identifier);
+    }, Math.max(1, result.retry_after_ms));
+    return true;
+  }
+
+  if (lockedLoginIdentity === identity) {
+    clearLoginLockUi();
+    if (document.getElementById("loginError").textContent === loginLockWarning) {
+      document.getElementById("loginError").style.display = "none";
+    }
+  }
+  return false;
+}
+
+async function requestLoginAttempt(action, role, identifier) {
+  const response = await fetch("login-attempts.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: action, role: role, account_id: identifier })
+  });
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error("Unable to verify login attempt.");
+  }
+  if (!response.ok) throw new Error(result.error || "Unable to verify login attempt.");
+  return result;
+}
+
+async function refreshLoginLock(role, identifier) {
+  const sequence = ++loginLockSequence;
+  try {
+    const result = await requestLoginAttempt("check", role, identifier);
+    if (sequence === loginLockSequence) applyLoginLockState(result, role, identifier);
+  } catch {
+    if (sequence === loginLockSequence &&
+        role === currentRole &&
+        getLoginIdentity(role, identifier) === getLoginIdentity(currentRole, document.getElementById("loginAccountId").value)) {
+      showError("Unable to verify login attempt. Please try again.");
+    }
+  }
+}
+
+function scheduleLoginLockCheck() {
+  clearTimeout(loginLockCheckTimer);
+  const identifier = document.getElementById("loginAccountId").value.trim();
+  const identity = getLoginIdentity(currentRole, identifier);
+  if (lockedLoginIdentity && lockedLoginIdentity !== identity) clearLoginLockUi();
+  if (!identifier) return;
+
+  const role = currentRole;
+  loginLockCheckTimer = setTimeout(function () {
+    refreshLoginLock(role, identifier);
+  }, 250);
+}
 
 // Slide the white pill under the active tab
 function moveIndicator() {
@@ -168,6 +260,9 @@ function activateTab(role) {
 }
 
 function setRole(role) {
+  loginLockSequence++;
+  clearTimeout(loginLockCheckTimer);
+  clearLoginLockUi();
   currentRole = role;
 
   const label = role.charAt(0).toUpperCase() + role.slice(1);
@@ -224,10 +319,13 @@ function togglePasswordField(button) {
 }
 
 function doLogin() {
+  if (loginRequestInProgress) return;
   const accountIdInput = document.getElementById("loginAccountId");
   const passInput = document.getElementById("loginPassword");
   const button = document.getElementById("loginButton");
+  if (button.disabled || passInput.disabled) return;
 
+  const role = currentRole;
   const identifier = accountIdInput.value.trim();
   const pass = passInput.value.trim();
 
@@ -246,58 +344,92 @@ function doLogin() {
     return;
   }
 
-  const account = findLoginAccount(currentRole, identifier);
-  const correctPass = Boolean(account && pass === account.password);
-
-  if (!account) {
-    accountIdInput.classList.add("login-input-error");
-    showError("No " + currentRole + " account found with this Account ID.");
-    return;
-  }
-  if (!correctPass) {
-    accountIdInput.classList.add("login-input-valid");
-    passInput.classList.add("login-input-error");
-    showError("Incorrect password. Please try again.");
-    return;
-  }
-
-  accountIdInput.classList.add("login-input-valid");
-  passInput.classList.add("login-input-valid");
-
-  // Loading effect
+  const sequence = ++loginLockSequence;
+  clearTimeout(loginLockCheckTimer);
+  loginRequestInProgress = true;
   button.disabled = true;
   button.innerHTML = '<span class="login-spinner"></span>Logging in...';
 
-  setTimeout(() => {
-    localStorage.setItem("celtech_user", JSON.stringify({
-      name: account.name,
-      role: account.role,
-      id: account.id,
-      accountUid: account.accountUid
-    }));
+  (async function () {
+    let redirecting = false;
+    try {
+      const lockStatus = await requestLoginAttempt("check", role, identifier);
+      if (sequence !== loginLockSequence) return;
+      if (applyLoginLockState(lockStatus, role, identifier)) return;
 
-    // Go to this role's page (if a link is set above)
-    if (pages[currentRole]) {
-      window.location.href = pages[currentRole];
-      return;
+      const account = findLoginAccount(role, identifier);
+      const correctPass = Boolean(account && pass === account.password);
+      if (!correctPass) {
+        const failure = await requestLoginAttempt("failure", role, identifier);
+        if (sequence !== loginLockSequence) return;
+        if (applyLoginLockState(failure, role, identifier)) return;
+
+        passInput.classList.add("login-input-error");
+        showError((account
+          ? "Incorrect password. Please try again. "
+          : "No " + role + " account found with this Account ID. ") +
+          failure.remaining_attempts + " attempts remaining.");
+        if (account) accountIdInput.classList.add("login-input-valid");
+        else accountIdInput.classList.add("login-input-error");
+        return;
+      }
+
+      const success = await requestLoginAttempt("success", role, identifier);
+      if (sequence !== loginLockSequence) return;
+      if (applyLoginLockState(success, role, identifier)) return;
+
+      accountIdInput.classList.add("login-input-valid");
+      passInput.classList.add("login-input-valid");
+      loginRequestInProgress = false;
+      redirecting = true;
+
+      setTimeout(() => {
+        localStorage.setItem("celtech_user", JSON.stringify({
+          name: account.name,
+          role: account.role,
+          id: account.id,
+          accountUid: account.accountUid
+        }));
+
+        if (pages[role]) {
+          window.location.href = pages[role];
+          return;
+        }
+
+        document.getElementById("login").style.display = "none";
+        button.disabled = false;
+        button.textContent = "LOGIN";
+
+        if (typeof updateProfile === "function") updateProfile();
+        if (typeof render === "function") render();
+        showPortal(role, account.name);
+      }, 1200);
+    } catch (error) {
+      if (sequence === loginLockSequence &&
+          role === currentRole &&
+          getLoginIdentity(role, identifier) === getLoginIdentity(currentRole, accountIdInput.value)) {
+        showError(error.message || "Unable to verify login attempt. Please try again.");
+      }
+    } finally {
+      loginRequestInProgress = false;
+      if (!redirecting) {
+        const isLocked = lockedLoginIdentity === getLoginIdentity(currentRole, accountIdInput.value);
+        button.disabled = isLocked;
+        passInput.disabled = isLocked;
+        button.textContent = "LOGIN";
+      }
     }
-
-    document.getElementById("login").style.display = "none";
-    button.disabled = false;
-    button.textContent = "LOGIN";
-
-    // Hook into your existing dashboard code here
-    if (typeof updateProfile === "function") updateProfile();
-    if (typeof render === "function") render();
-    showPortal(currentRole, account.name);
-  }, 1200);
+  })();
 }
 window.doLogin = doLogin;
 
 // Red -> green as soon as the person types again
 function validateLoginField(input) {
+  if (input.id === "loginAccountId") scheduleLoginLockCheck();
   input.classList.remove("login-input-error", "login-input-valid");
-  document.getElementById("loginError").style.display = "none";
+  if (lockedLoginIdentity !== getLoginIdentity(currentRole, document.getElementById("loginAccountId").value)) {
+    document.getElementById("loginError").style.display = "none";
+  }
 
   const value = input.value.trim();
   if (!value) return;
