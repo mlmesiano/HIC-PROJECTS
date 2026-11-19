@@ -409,12 +409,6 @@ function viewMyReservationDetails(reservationId) {
       { label: 'Return schedule resolution', value: reservation.returnScheduleResolutionNote || '—' },
       { label: 'Returned at', value: formatManilaDateTime(reservation.returnedAt) },
       { label: 'Status', value: reservation.status },
-      { label: 'Penalty amount', value: reservation.penaltyAmount == null ? '—' : `₱${Number(reservation.penaltyAmount).toLocaleString('en-PH')}` },
-      { label: 'Penalty status', value: reservation.penaltyStatus },
-      { label: 'Penalty resolution', value: [
-        reservation.penaltyResolutionAt && formatManilaDateTime(reservation.penaltyResolutionAt),
-        reservation.penaltyResolutionReason
-      ].filter(Boolean).join(' — ') || '—' },
       { label: 'Decline reason', value: reservation.declineReason || '—' },
       { label: 'Activity history', value: history }
     ],

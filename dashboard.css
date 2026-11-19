@@ -689,6 +689,18 @@ body {
   border: 1px solid var(--green-mid);
   border-radius: 8px;
   background: var(--white);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.reservation-summary-card:hover {
+  border-color: var(--green);
+  box-shadow: 0 2px 6px rgba(14, 138, 58, 0.12);
+}
+
+.reservation-summary-card:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 
 .reservation-summary-card strong {
@@ -847,7 +859,7 @@ body {
 .request-tabs {
   display: flex;
   flex-wrap: nowrap;
-  gap: 5px;
+  gap: 4px;
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -859,12 +871,12 @@ body {
 
 .request-tab {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 32px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 5px 8px;
+  gap: 4px;
+  padding: 4px 6px;
   border: 1px solid var(--green-mid);
   border-radius: 7px 7px 0 0;
   background: var(--white);
@@ -890,8 +902,8 @@ body {
 
 .request-tab-count {
   display: inline-grid;
-  min-width: 18px;
-  height: 18px;
+  min-width: 17px;
+  height: 17px;
   place-items: center;
   padding: 0 4px;
   border-radius: 999px;
@@ -928,6 +940,22 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.7;
+}
+
+.request-history-chevron {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  transition: transform 0.15s ease;
+}
+
+.request-history-chevron.is-open {
+  transform: rotate(90deg);
 }
 
 .request-empty-state {
@@ -1109,7 +1137,17 @@ body {
 .book-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  align-items: stretch;
   gap: 15px;
+}
+
+.book-grid > .book {
+  display: flex;
+  flex-direction: column;
+}
+
+.book-grid > .book > .btn {
+  margin-top: auto;
 }
 
 .book {
@@ -1126,10 +1164,50 @@ body {
   border-color: var(--green);
 }
 
+.inventory-book-card {
+  cursor: pointer;
+}
+
+.inventory-book-card:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
 .book h4 {
   margin-bottom: 5px;
   color: var(--green-dark);
   font-size: 15px;
+}
+
+.book.book-out-of-stock {
+  border-color: #d98a83;
+  background: #fffafa;
+}
+
+.inventory-out-of-stock-icon {
+  color: #b42318;
+}
+
+.inventory-stock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 3px 0 6px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.25px;
+}
+
+.inventory-stock-badge.out-of-stock {
+  background: #fff0ef;
+  color: #a93226;
+}
+
+.inventory-stock-badge.low-stock {
+  background: #fff7e6;
+  color: #805500;
 }
 
 .book .meta {
@@ -1684,6 +1762,37 @@ body {
   font-weight: 700;
 }
 
+.request-summary-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--green-mid);
+  border-radius: 7px;
+  background: var(--green-light);
+  color: var(--green-dark);
+  font-size: 13px;
+}
+
+.request-summary-filter-clear {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--green-mid);
+  border-radius: 5px;
+  background: var(--white);
+  color: var(--green-dark);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.request-summary-filter-clear:hover {
+  border-color: var(--green);
+  background: var(--white);
+}
+
 .activity-cards {
   display: grid;
   gap: 6px;
@@ -1851,9 +1960,16 @@ body {
   margin-top: 5px;
 }
 
-.account-registration-section {
-  max-width: 620px;
+.account-registration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
   margin-bottom: 18px;
+}
+
+.account-registration-section {
+  min-width: 0;
+  margin-bottom: 0;
 }
 
 .account-registration-section > p {
@@ -2430,6 +2546,10 @@ body {
 }
 
 @media (max-width: 700px) {
+  .account-registration-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .request-controls {
     flex-wrap: wrap;
   }
@@ -2443,6 +2563,11 @@ body {
     flex: 0 0 auto;
     justify-content: center;
     border-radius: 7px;
+  }
+
+  .request-summary-filter {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .borrower-reservation-card {

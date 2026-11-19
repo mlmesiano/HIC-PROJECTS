@@ -117,11 +117,8 @@ function findLoginAccount(role, identifier) {
   const byId = accounts.find(account => account.id.toLowerCase() === value);
   if (byId) return byId;
 
-  const legacyMatches = INITIAL_LIBRARY_ACCOUNTS
-    .filter(account => account.role === normalizedRole && account.name.toLowerCase() === value)
-    .map(account => getLibraryAccountById(account.id))
-    .filter(Boolean);
-  return legacyMatches.length === 1 ? legacyMatches[0] : null;
+  const nameMatches = accounts.filter(account => account.name.trim().toLowerCase() === value);
+  return nameMatches.length === 1 ? nameMatches[0] : null;
 }
 
 function createAccountUid() {
@@ -145,16 +142,17 @@ function requireLibraryAdmin() {
   }
 }
 
-function registerLibraryStudent(name, id, password) {
+function registerLibraryAccount(name, id, password, role) {
   requireLibraryAdmin();
+  const accountType = role === 'teacher' ? 'Teacher' : 'Student';
   const normalizedName = String(name ?? '').trim();
   const normalizedId = String(id ?? '').trim();
   const normalizedPassword = String(password ?? '').trim();
   if (!normalizedName || !normalizedId || !normalizedPassword) {
-    throw new Error('Student name, ID, and password are required.');
+    throw new Error(`${accountType} name, ID, and password are required.`);
   }
   if (!/^\d{9}$/.test(normalizedId)) {
-    throw new Error('Student ID must contain exactly 9 digits.');
+    throw new Error(`${accountType} ID must contain exactly 9 digits.`);
   }
   if (normalizedPassword.length < 6) {
     throw new Error('Password must be at least 6 characters.');
@@ -171,12 +169,20 @@ function registerLibraryStudent(name, id, password) {
     accountUid,
     id: normalizedId,
     name: normalizedName,
-    role: 'student',
+    role,
     password: normalizedPassword
   };
   registered.push(account);
   localStorage.setItem(LIBRARY_ACCOUNT_KEYS.accounts, JSON.stringify(registered));
   return { ...account, isStatic: false };
+}
+
+function registerLibraryStudent(name, id, password) {
+  return registerLibraryAccount(name, id, password, 'student');
+}
+
+function registerLibraryTeacher(name, id, password) {
+  return registerLibraryAccount(name, id, password, 'teacher');
 }
 
 function updateLibraryAccountName(id, name) {

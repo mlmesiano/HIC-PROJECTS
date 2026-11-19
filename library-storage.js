@@ -10,7 +10,6 @@ const HELD_STATUSES = new Set([
   PENDING_STATUS, APPROVED_STATUS, BORROWED_STATUS, DUE_SOON_STATUS, OVERDUE_STATUS
 ]);
 const DEFAULT_BORROWING_HOURS = 72;
-const DEFAULT_PENALTY_AMOUNT = 1000000;
 const DEFAULT_DUE_SOON_THRESHOLD_HOURS = 24;
 const MAX_ACTIVE_RESERVATIONS = 5;
 const LIBRARY_NOTIFICATION_KEY = 'celtech_notifications';
@@ -263,9 +262,6 @@ function loadReservations() {
       returnScheduleResolutionNote: reservation.returnScheduleResolutionNote || '',
       date: reservation.date || new Date().toLocaleDateString(),
       status,
-      penaltyStatus: reservation.penaltyStatus || 'No Penalty',
-      penaltyAmount: reservation.penaltyAmount ?? null,
-      penaltyResolutionAt: reservation.penaltyResolutionAt || '',
       declineReason: reservation.declineReason || ''
     };
   });
@@ -288,7 +284,6 @@ function loadSetting(key, fallback) {
 let books = loadBooks();
 let reservations = loadReservations();
 let borrowingDurationHours = loadSetting('celtech_borrowing_duration_hours', DEFAULT_BORROWING_HOURS);
-let penaltyAmount = loadSetting('celtech_penalty_amount', DEFAULT_PENALTY_AMOUNT);
 let dueSoonThresholdHours = loadSetting('celtech_due_soon_threshold_hours', DEFAULT_DUE_SOON_THRESHOLD_HOURS);
 
 function saveBooks() {
@@ -303,7 +298,6 @@ function refreshLibraryData() {
   books = loadBooks();
   reservations = loadReservations();
   borrowingDurationHours = loadSetting('celtech_borrowing_duration_hours', DEFAULT_BORROWING_HOURS);
-  penaltyAmount = loadSetting('celtech_penalty_amount', DEFAULT_PENALTY_AMOUNT);
   dueSoonThresholdHours = loadSetting('celtech_due_soon_threshold_hours', DEFAULT_DUE_SOON_THRESHOLD_HOURS);
   updateBorrowingStatuses();
 }
@@ -315,7 +309,6 @@ function subscribeToLibraryUpdates(onUpdate) {
     'celtech_activity',
     LIBRARY_NOTIFICATION_KEY,
     'celtech_borrowing_duration_hours',
-    'celtech_penalty_amount',
     'celtech_due_soon_threshold_hours'
   ]);
   window.addEventListener('storage', event => {
@@ -350,19 +343,8 @@ function updateBorrowingStatuses() {
       reservation.status = status;
       changed = true;
       if (status === OVERDUE_STATUS) {
-        reservation.penaltyStatus = reservation.penaltyStatus === 'No Penalty'
-          ? 'Unresolved'
-          : reservation.penaltyStatus;
-        reservation.penaltyAmount ??= penaltyAmount;
         recordLibraryActivity(reservation, 'Book marked overdue');
       }
-    }
-    if (status === OVERDUE_STATUS && reservation.penaltyAmount == null) {
-      reservation.penaltyStatus = reservation.penaltyStatus === 'No Penalty'
-        ? 'Unresolved'
-        : reservation.penaltyStatus;
-      reservation.penaltyAmount = penaltyAmount;
-      changed = true;
     }
   });
 
@@ -373,29 +355,20 @@ function getBorrowingDurationHours() {
   return borrowingDurationHours;
 }
 
-function getPenaltyAmount() {
-  return penaltyAmount;
-}
-
 function getDueSoonThresholdHours() {
   return dueSoonThresholdHours;
 }
 
-function saveLibrarySettings(hours, amount, dueSoonHours = dueSoonThresholdHours) {
+function saveLibrarySettings(hours, dueSoonHours = dueSoonThresholdHours) {
   if (!Number.isSafeInteger(hours) || hours <= 0) {
     throw new Error('Borrowing duration must be a positive whole number of hours.');
-  }
-  if (!Number.isSafeInteger(amount) || amount < 0) {
-    throw new Error('Penalty amount must be a non-negative whole number.');
   }
   if (!Number.isSafeInteger(dueSoonHours) || dueSoonHours < 0) {
     throw new Error('Due-soon threshold must be a non-negative whole number of hours.');
   }
   borrowingDurationHours = hours;
-  penaltyAmount = amount;
   dueSoonThresholdHours = dueSoonHours;
   localStorage.setItem('celtech_borrowing_duration_hours', String(hours));
-  localStorage.setItem('celtech_penalty_amount', String(amount));
   localStorage.setItem('celtech_due_soon_threshold_hours', String(dueSoonHours));
 }
 
@@ -552,9 +525,6 @@ function reserveBook(bookId, user, preferredPickupAt) {
     returnScheduleResolutionNote: '',
     date: new Date().toLocaleDateString(),
     status: PENDING_STATUS,
-    penaltyStatus: 'No Penalty',
-    penaltyAmount: null,
-    penaltyResolutionAt: '',
     declineReason: '',
     borrowingDurationHours: null
   };
@@ -739,8 +709,6 @@ function markReservationPickedUp(reservationId, admin) {
   reservation.dueAt = new Date(Date.parse(pickedUpAt) + duration * 3600000).toISOString();
   reservation.borrowingDurationHours = duration;
   reservation.status = BORROWED_STATUS;
-  reservation.penaltyStatus = 'No Penalty';
-  reservation.penaltyAmount = null;
   saveReservations();
   recordLibraryActivity(reservation, 'Book handed to student', getAdminName(admin));
 }
@@ -755,33 +723,8 @@ function confirmReservationReturned(reservationId, admin) {
   const returnedAt = new Date().toISOString();
   reservation.returnedAt = returnedAt;
   reservation.status = RETURNED_STATUS;
-  if (Date.parse(returnedAt) > Date.parse(reservation.dueAt)) {
-    reservation.penaltyStatus = reservation.penaltyStatus === 'No Penalty'
-      ? 'Unresolved'
-      : reservation.penaltyStatus;
-    reservation.penaltyAmount ??= penaltyAmount;
-  }
   saveReservations();
   recordLibraryActivity(reservation, 'Book returned', getAdminName(admin));
-}
-
-function resolveReservationPenalty(reservationId, resolution, reason, admin) {
-  admin = requireAdminUser();
-  refreshLibraryData();
-  const reservation = getReservation(reservationId);
-  if (!reservation || reservation.status !== RETURNED_STATUS ||
-      !['Paid', 'Waived'].includes(resolution) || reservation.penaltyStatus !== 'Unresolved') {
-    throw new Error('Only unresolved penalties on returned books can be resolved.');
-  }
-  reservation.penaltyStatus = resolution;
-  reservation.penaltyResolutionAt = new Date().toISOString();
-  reservation.penaltyResolutionReason = resolution === 'Waived' ? String(reason || '').trim() : '';
-  saveReservations();
-  recordLibraryActivity(
-    reservation,
-    resolution === 'Paid' ? 'Penalty marked paid' : 'Penalty waived',
-    getAdminName(admin)
-  );
 }
 
 function cancelReservation(reservationId, user) {
@@ -870,7 +813,7 @@ function escapeHtml(value) {
 }
 
 window.addEventListener('storage', event => {
-  if (['celtech_books', 'celtech_final', 'celtech_activity', LIBRARY_NOTIFICATION_KEY, 'celtech_borrowing_duration_hours', 'celtech_penalty_amount', 'celtech_due_soon_threshold_hours', 'celtech_accounts', 'celtech_account_profiles', 'celtech_account_passwords', 'celtech_passwords'].includes(event.key)) {
+  if (['celtech_books', 'celtech_final', 'celtech_activity', LIBRARY_NOTIFICATION_KEY, 'celtech_borrowing_duration_hours', 'celtech_due_soon_threshold_hours', 'celtech_accounts', 'celtech_account_profiles', 'celtech_account_passwords', 'celtech_passwords'].includes(event.key)) {
     refreshLibraryData();
     if (typeof updateProfile === 'function') updateProfile();
     if (typeof render === 'function') render();

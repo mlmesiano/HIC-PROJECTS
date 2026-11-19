@@ -17,7 +17,7 @@
     <h3>Navigation</h3>
     <div id="nav-books" class="nav-item active" onclick="showView('books')">📖 CELTECH Books</div>
     <div id="nav-requests" class="nav-item" onclick="showView('requests')">📋 Student / Teacher Requests</div>
-    <div id="nav-register" class="nav-item" onclick="showView('register')">👤 Register Student</div>
+    <div id="nav-register" class="nav-item" onclick="showView('register')">👤 Register</div>
     <div id="nav-settings" class="nav-item" onclick="showView('settings')">⚙️ Settings</div>
     <div id="nav-about" class="nav-item" onclick="showView('about')">🏫 About Library</div>
 
@@ -133,12 +133,15 @@ let searchText = '';
 let restockBookId = null;
 let requestSearch = '';
 let requestTab = 'pending';
+let requestStatusFilter = null;
 let adminAccountSearch = '';
 let activityHistorySearch = '';
 let activityHistoryVisibleCount = 10;
+let activityHistoryReturnedOnly = false;
 const remindersInProgress = new Set();
 let overdueManagementReservationId = null;
 let overdueManagementOpener = null;
+const LOW_STOCK_THRESHOLD = 2;
 const categories = ['All', 'BSIT Major', 'GenEd', 'Thesis'];
 const reminderCooldowns = new Map();
 
@@ -265,13 +268,23 @@ function renderBooks(content) {
       ${filtered.map(book => {
         const reserved = getBookReservationCount(book.id);
         const available = getAvailableCopies(book.id);
+        const stockStatus = available === 0
+          ? '<span class="inventory-stock-badge out-of-stock">OUT OF STOCK</span>'
+          : available <= LOW_STOCK_THRESHOLD
+            ? '<span class="inventory-stock-badge low-stock">LOW STOCK</span>'
+            : '';
         return `
-          <div class="book">
-            <h4>${escapeHtml(book.title)}</h4>
+          <div class="book inventory-book-card ${available === 0 ? 'book-out-of-stock' : ''}"
+            role="group" tabindex="0" aria-label="Open Student / Teacher Requests"
+            aria-keyshortcuts="Enter Space"
+            onclick="openBookRequests(event)"
+            onkeydown="handleInventoryBookKeydown(event)">
+            <h4>${available === 0 ? '<span class="inventory-out-of-stock-icon" aria-label="Out of stock">⚠</span> ' : ''}${escapeHtml(book.title)}</h4>
+            ${stockStatus}
             <div class="meta">Author: ${escapeHtml(book.author)} | Shelf: ${escapeHtml(book.shelf)}</div>
             <div class="meta">Category: ${escapeHtml(book.category)}</div>
             <div class="meta">Total Copies: ${book.copies}</div>
-            <div class="meta">Available: ${available}</div>
+            <div class="meta">Available: <strong>${available}</strong></div>
             <div class="meta">Reserved: ${reserved}</div>
             <button class="btn" type="button" data-restock-book-id="${book.id}"
               onclick="restock(${book.id})">RESTOCK</button>
@@ -280,6 +293,22 @@ function renderBooks(content) {
       }).join('')}
     </div>
   `);
+}
+
+function openBookRequests(event) {
+  if (event && event.target.closest('button, a, input, select, textarea, [contenteditable="true"]')) return;
+  requestTab = 'pending';
+  requestStatusFilter = null;
+  activityHistoryReturnedOnly = false;
+  requestSearch = '';
+  showView('requests');
+}
+
+function handleInventoryBookKeydown(event) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  if (event.target.closest('button, a, input, select, textarea, [contenteditable="true"]')) return;
+  event.preventDefault();
+  openBookRequests(event);
 }
 
 function restock(bookId) {
@@ -414,7 +443,10 @@ function renderRequests(content) {
   const historySelected = requestTab === 'history';
   const matchingTabReservations = historySelected
     ? []
-    : reservations.filter(reservation => matchesTab(reservation, requestTab));
+    : reservations.filter(reservation => {
+      if (!matchesTab(reservation, requestTab)) return false;
+      return requestStatusFilter == null || reservation.status === requestStatusFilter;
+    });
   const query = requestSearch.toLowerCase();
   const filtered = matchingTabReservations.filter(reservation => {
     const haystack = [
@@ -427,6 +459,16 @@ function renderRequests(content) {
 
   content.insertAdjacentHTML('beforeend', `
     <h3 class="admin-page-title">Student / Teacher Requests</h3>
+    ${requestStatusFilter != null || activityHistoryReturnedOnly
+      ? `<div class="request-summary-filter" role="status">
+          <span>${activityHistoryReturnedOnly
+            ? 'Showing returned transactions'
+            : `Showing ${requestStatusFilter === DUE_SOON_STATUS ? 'Due Soon' : escapeHtml(requestStatusFilter)} requests`}</span>
+          <button class="request-summary-filter-clear" type="button" onclick="clearRequestSummaryFilter()">
+            ${activityHistoryReturnedOnly ? 'Show all history' : 'Show all requests'}
+          </button>
+        </div>`
+      : ''}
     ${requestTab === 'overdue' && overdueCount > 0
       ? `<p class="overdue-notice" role="status">${overdueCount} reservation${overdueCount === 1 ? '' : 's'} overdue. Review and notify borrowers as needed.</p>`
       : ''}
@@ -449,6 +491,9 @@ function renderRequests(content) {
           <path d="M5 4.5v17M9 6h7M9 9h7M9 12h5"></path>
         </svg>
         <span>Activity History</span><span class="request-tab-count">${activityCount}</span>
+        <svg class="request-history-chevron ${historySelected ? 'is-open' : ''}" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m6 3 5 5-5 5"></path>
+        </svg>
       </button>
     </nav>
     ${historySelected
@@ -533,6 +578,15 @@ function renderRequests(content) {
 
 function selectRequestTab(tab) {
   requestTab = tab;
+  requestStatusFilter = null;
+  activityHistoryReturnedOnly = false;
+  render();
+}
+
+function clearRequestSummaryFilter() {
+  requestStatusFilter = null;
+  activityHistoryReturnedOnly = false;
+  requestSearch = '';
   render();
 }
 
@@ -565,12 +619,6 @@ function openOverdueManagementDialog(reservationId, opener = null) {
         ['Borrowing date', formatManilaDateTime(reservation.pickedUpAt)],
         ['Due date', formatManilaDateTime(reservation.dueAt)],
         ['Current overdue status', 'OVERDUE']
-      ])}
-      ${renderManagementDetails('Penalty Information', [
-        ['Penalty amount', reservation.penaltyAmount == null
-          ? `₱${Number(getPenaltyAmount()).toLocaleString('en-PH')} (current setting)`
-          : `₱${Number(reservation.penaltyAmount).toLocaleString('en-PH')}`],
-        ['Penalty status', reservation.penaltyStatus || 'Unresolved']
       ])}
     </div>
   `;
@@ -679,17 +727,25 @@ function renderActivityHistory() {
             day: 'numeric'
           }).format(date)
           : 'Unknown date',
-        accountId: item.userId || item.accountId || (reservation && reservation.userId) || ''
+        accountId: item.userId || item.accountId || (reservation && reservation.userId) || '',
+        bookTitle: item.bookTitle || (reservation && reservation.title) || '',
+        reservationStatus: reservation && reservation.status
       };
     })
-    .filter(entry => !query || [
-      entry.item.userName,
-      entry.accountId,
-      entry.item.bookTitle,
-      entry.item.reservationId,
-      entry.item.action,
-      entry.item.description
-    ].some(value => String(value || '').toLowerCase().includes(query)))
+    .filter(entry => {
+      const matchesReturned = !activityHistoryReturnedOnly ||
+        (entry.reservationStatus === RETURNED_STATUS &&
+          String(entry.item.action || '').toLowerCase().includes('return'));
+      const matchesQuery = !query || [
+        entry.item.userName,
+        entry.accountId,
+        entry.bookTitle,
+        entry.item.reservationId,
+        entry.item.action,
+        entry.item.description
+      ].some(value => String(value || '').toLowerCase().includes(query));
+      return matchesReturned && matchesQuery;
+    })
     .sort((left, right) => {
       const leftTime = Number.isFinite(left.timestamp) ? left.timestamp : -Infinity;
       const rightTime = Number.isFinite(right.timestamp) ? right.timestamp : -Infinity;
@@ -701,7 +757,9 @@ function renderActivityHistory() {
       <input class="search activity-search" type="search" aria-label="Search activity history"
         placeholder="Search by name, account ID, book, reservation ID, or activity..."
         value="${escapeHtml(activityHistorySearch)}" oninput="updateActivityHistorySearch(this)">
-      <p class="activity-empty-state">${query ? 'No matching activity was found.' : 'No activity recorded yet.'}</p>
+      <p class="activity-empty-state">${query
+        ? 'No matching activity was found.'
+        : activityHistoryReturnedOnly ? 'No returned transactions are available in activity history.' : 'No activity recorded yet.'}</p>
     </div>`;
   }
 
@@ -736,10 +794,10 @@ function renderActivityHistory() {
           : `${totalCount} ${totalCount === 1 ? 'activity' : 'activities'}`;
         return `<section class="activity-date-group">
           <h5>${escapeHtml(group.dateLabel)} <span>${groupCountLabel}</span></h5>
-          <div class="activity-cards">${group.entries.map(({ item, accountId }) => `
+          <div class="activity-cards">${group.entries.map(({ item, accountId, bookTitle }) => `
             <article class="activity-card">
               <strong>${escapeHtml(item.action || item.description || 'Activity')}</strong>
-              <span>${escapeHtml(item.bookTitle || 'Book title unavailable')} · ${escapeHtml(item.userName || 'Unknown user')}</span>
+              <span>${escapeHtml(bookTitle || 'Book title unavailable')} · ${escapeHtml(item.userName || 'Unknown user')}</span>
               ${accountId ? `<span class="activity-account-id">Account ID: ${escapeHtml(accountId)}</span>` : ''}
               <span>${escapeHtml(formatManilaDateTime(item.timestamp))}${item.adminName ? ` · Admin: ${escapeHtml(item.adminName)}` : ''}</span>
               <small>Reservation #${escapeHtml(item.reservationId || '—')}</small>
@@ -816,17 +874,10 @@ function renderManagementActions(reservation) {
       ${reservation.returnScheduleStatus === 'Return Schedule Confirmed' ? `
         <button class="btn manage-action-secondary" type="button" data-manage-action="update-return-schedule" data-reservation-id="${id}">Update Return Schedule</button>
       ` : ''}
-      <button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Physical Return</button>
-      <button class="btn manage-action-secondary" type="button" disabled title="Record the book return before resolving its penalty.">Resolve Penalty</button>
-      <span class="manage-action-note">Penalty resolution is available after the return is recorded.</span>`;
+      <button class="btn manage-action-primary" type="button" data-manage-action="return" data-reservation-id="${id}">Confirm Physical Return</button>`;
   }
   if (reservation.status === RETURNED_STATUS) {
-    return `
-      <button class="btn manage-action-secondary" type="button" data-manage-action="history" data-reservation-id="${id}">View Borrowing History</button>
-      ${reservation.penaltyStatus === 'Unresolved' ? `
-        <button class="btn manage-action-primary" type="button" data-manage-action="paid" data-reservation-id="${id}">Mark Penalty Paid</button>
-        <button class="btn manage-action-danger" type="button" data-manage-action="waive" data-reservation-id="${id}">Waive Penalty</button>
-      ` : ''}`;
+    return `<button class="btn manage-action-secondary" type="button" data-manage-action="history" data-reservation-id="${id}">View Borrowing History</button>`;
   }
   return '';
 }
@@ -842,10 +893,6 @@ function openManageReservationDialog(reservationId, opener = null) {
   const remaining = reservation.dueAt && HELD_STATUSES.has(reservation.status)
     ? formatRemainingTime(reservation.dueAt)
     : '—';
-  const penaltyRelevant = reservation.penaltyStatus !== 'No Penalty' ||
-    [OVERDUE_STATUS, RETURNED_STATUS].includes(reservation.status);
-  const penaltyAmount = reservation.penaltyAmount ??
-    (reservation.status === OVERDUE_STATUS ? getPenaltyAmount() : null);
   const history = getLibraryActivity()
     .filter(item => item.reservationId === reservation.reservationId)
     .slice()
@@ -883,14 +930,6 @@ function openManageReservationDialog(reservationId, opener = null) {
         ['Borrower note', reservation.returnScheduleNote],
         ['Schedule decision note', reservation.returnScheduleResolutionNote]
       ])}
-      ${penaltyRelevant ? renderManagementDetails('Penalty Information', [
-        ['Penalty amount', penaltyAmount == null ? '—' : `₱${Number(penaltyAmount).toLocaleString('en-PH')}`],
-        ['Penalty status', reservation.penaltyStatus],
-        ['Resolution', [
-          reservation.penaltyResolutionAt && formatManilaDateTime(reservation.penaltyResolutionAt),
-          reservation.penaltyResolutionReason
-        ].filter(Boolean).join(' — ') || '—']
-      ]) : ''}
     </div>
     <section id="manageBorrowingHistory" class="manage-history" hidden>
       <h3>Borrowing History</h3>
@@ -935,8 +974,6 @@ document.getElementById('manageReservationActions').addEventListener('click', ev
   else if (action === 'confirm-return-schedule') confirmBorrowerReturnSchedule(reservationId);
   else if (action === 'update-return-schedule') openAdminReturnScheduleDialog(reservationId);
   else if (action === 'decline-return-schedule') openDeclineReturnScheduleDialog(reservationId);
-  else if (action === 'paid') resolvePenalty(reservationId, 'Paid');
-  else if (action === 'waive') openWaivePenaltyDialog(reservationId);
 });
 
 document.getElementById('manageReservationDialog').addEventListener('close', () => {
@@ -1103,48 +1140,18 @@ function openDeclineReturnScheduleDialog(reservationId) {
   });
 }
 
-function resolvePenalty(reservationId, resolution, reason = '') {
-  try {
-    resolveReservationPenalty(reservationId, resolution, reason, getCurrentUser());
-    render();
-    showLibraryToast(`Penalty marked ${resolution.toLowerCase()}.`);
-  } catch (error) {
-    showLibraryToast(error.message, 'error');
-  }
-}
-
-function openWaivePenaltyDialog(reservationId) {
-  openLibraryDialog({
-    title: 'Waive Penalty',
-    description: 'Add an optional reason for waiving this penalty.',
-    fields: [{ name: 'reason', label: 'Reason (optional)', type: 'textarea', rows: 3 }],
-    confirmText: 'Waive Penalty',
-    onConfirm(values) {
-      resolveReservationPenalty(reservationId, 'Waived', values.reason, getCurrentUser());
-      render();
-    },
-    successMessage: 'Penalty waived.'
-  });
-}
-
 function saveAdminSettings() {
   const form = document.querySelector('.admin-settings-page');
   clearAdminFormErrors(form);
   const hoursInput = document.getElementById('borrowingDuration');
-  const amountInput = document.getElementById('penaltyAmount');
   const thresholdInput = document.getElementById('dueSoonThreshold');
   const hoursText = hoursInput.value.trim();
-  const amountText = amountInput.value.trim();
   const thresholdText = thresholdInput.value.trim();
   const hours = Number(hoursText);
-  const amount = Number(amountText);
   const threshold = Number(thresholdText);
   const errors = [];
   if (!/^\d+$/.test(hoursText) || !Number.isSafeInteger(hours) || hours <= 0) {
     errors.push([hoursInput, 'Enter a positive whole number of hours.']);
-  }
-  if (!/^\d+$/.test(amountText) || !Number.isSafeInteger(amount) || amount < 0) {
-    errors.push([amountInput, 'Enter a non-negative whole-number amount.']);
   }
   if (!/^\d+$/.test(thresholdText) || !Number.isSafeInteger(threshold) || threshold < 0) {
     errors.push([thresholdInput, 'Enter a non-negative whole number of hours.']);
@@ -1158,7 +1165,7 @@ function saveAdminSettings() {
     return;
   }
   try {
-    saveLibrarySettings(hours, amount, threshold);
+    saveLibrarySettings(hours, threshold);
     setAdminFormMessage(form, 'Library settings saved.', 'success');
   } catch (error) {
     setAdminFormMessage(form, error.message);
@@ -1184,21 +1191,47 @@ function renderAbout(content) {
 
 function renderSummary() {
   const counts = [
-    { label: 'Pending Requests', status: PENDING_STATUS },
-    { label: 'Approved / Ready for Pickup', status: APPROVED_STATUS },
-    { label: 'Currently Borrowed', status: BORROWED_STATUS },
-    { label: 'Due Soon', status: DUE_SOON_STATUS },
-    { label: 'Overdue', status: OVERDUE_STATUS },
-    { label: 'Returned', status: RETURNED_STATUS }
+   { label: 'Pending Requests', status: PENDING_STATUS, tab: 'pending' },
+   { label: 'Approved / Ready for Pickup', status: APPROVED_STATUS, tab: 'approved' },
+   { label: 'Currently Borrowed', status: BORROWED_STATUS, tab: 'borrowed' },
+   { label: 'Due Soon', status: DUE_SOON_STATUS, tab: 'borrowed' },
+   { label: 'Overdue', status: OVERDUE_STATUS, tab: 'overdue' },
+   { label: 'Returned', status: RETURNED_STATUS, tab: 'history' }
   ];
   return `<div class="reservation-summary">
     ${counts.map(item => `
-      <div class="reservation-summary-card">
+      <div class="reservation-summary-card" role="button" tabindex="0"
+        aria-label="View ${escapeHtml(item.label)}"
+        onclick="openSummaryRequests('${item.tab}', '${item.status}')"
+        onkeydown="handleSummaryCardKeydown(event, '${item.tab}', '${item.status}')">
         <strong>${reservations.filter(reservation => reservation.status === item.status).length}</strong>
         <span>${item.label}</span>
       </div>
     `).join('')}
   </div>`;
+}
+
+function openSummaryRequests(tab, status) {
+  requestSearch = '';
+  activityHistorySearch = '';
+  requestStatusFilter = null;
+  activityHistoryReturnedOnly = false;
+  if (status === DUE_SOON_STATUS) {
+   requestTab = 'borrowed';
+   requestStatusFilter = DUE_SOON_STATUS;
+  } else if (status === RETURNED_STATUS) {
+   requestTab = 'history';
+   activityHistoryReturnedOnly = true;
+  } else {
+   requestTab = tab;
+  }
+  showView('requests');
+}
+
+function handleSummaryCardKeydown(event, tab, status) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  openSummaryRequests(tab, status);
 }
 
 function renderSettings(content) {
@@ -1216,15 +1249,6 @@ function renderSettings(content) {
         </div>
       </section>
       <section class="settings-section">
-        <h4>Penalty Configuration</h4>
-        <p>Future overdue records use this amount. Existing penalty amounts are retained.</p>
-        <label for="penaltyAmount">Penalty amount in PHP <span class="demo-label">DEMO PLACEHOLDER</span></label>
-        <div class="admin-form-field">
-          <input id="penaltyAmount" type="number" min="0" step="1" value="${getPenaltyAmount()}" required>
-          <small class="admin-field-error" hidden></small>
-        </div>
-      </section>
-      <section class="settings-section">
         <h4>Return Notifications</h4>
         <label for="dueSoonThreshold">Due-soon notification threshold (hours)</label>
         <div class="admin-form-field">
@@ -1237,17 +1261,18 @@ function renderSettings(content) {
   `);
 }
 
-function submitStudentRegistration(event) {
+function submitAccountRegistration(event, role) {
   event.preventDefault();
   const form = event.currentTarget;
   clearAdminFormErrors(form);
-  const nameInput = form.elements.studentName;
-  const idInput = form.elements.studentId;
-  const passwordInput = form.elements.studentPassword;
+  const accountType = role === 'teacher' ? 'Teacher' : 'Student';
+  const nameInput = form.elements[`${role}Name`];
+  const idInput = form.elements[`${role}Id`];
+  const passwordInput = form.elements[`${role}Password`];
   if (!nameInput.value.trim() || !idInput.value.trim() || !passwordInput.value.trim()) {
     const requiredFields = [
-      [nameInput, 'Student Name is required.'],
-      [idInput, 'Student ID is required.'],
+      [nameInput, `${accountType} Name is required.`],
+      [idInput, `${accountType} ID is required.`],
       [passwordInput, 'Password is required.']
     ];
     const errors = requiredFields.filter(([input]) => !input.value.trim());
@@ -1257,32 +1282,39 @@ function submitStudentRegistration(event) {
     return;
   }
   try {
-    registerLibraryStudent(
-      nameInput.value,
-      idInput.value,
-      passwordInput.value
-    );
+    const registerAccount = role === 'teacher'
+      ? registerLibraryTeacher
+      : registerLibraryStudent;
+    registerAccount(nameInput.value, idInput.value, passwordInput.value);
     form.reset();
     render();
     showAdminInlineNotification(
-      'Student account registered successfully.',
+      `${accountType} account registered successfully.`,
       'success',
-      document.querySelector('.account-registration-form')
+      document.querySelector(`.account-registration-form[data-account-role="${role}"]`)
     );
   } catch (error) {
     const duplicateId = error.message.includes('already exists');
-    const input = error.message.includes('Student ID') || duplicateId
+    const input = error.message.includes(`${accountType} ID`) || duplicateId
       ? idInput
       : error.message.includes('Password')
         ? passwordInput
         : nameInput;
     const message = duplicateId
-      ? 'An account with this Student ID already exists. Please use a different ID.'
+      ? `An account with this ${accountType} ID already exists. Please use a different ID.`
       : error.message;
     setAdminFormMessage(form, message);
-    setAdminFieldError(input, duplicateId ? 'Choose a unique Student ID.' : error.message);
+    setAdminFieldError(input, duplicateId ? `Choose a unique ${accountType} ID.` : error.message);
     input.focus();
   }
+}
+
+function submitStudentRegistration(event) {
+  submitAccountRegistration(event, 'student');
+}
+
+function submitTeacherRegistration(event) {
+  submitAccountRegistration(event, 'teacher');
 }
 
 function updateAdminAccountSearch(input) {
@@ -1318,7 +1350,7 @@ function saveManagedAccountName(event) {
   }
 }
 
-function renderRegisterStudent(content) {
+function renderRegisterPage(content) {
   const query = adminAccountSearch.trim().toLowerCase();
   const accounts = getLibraryAccounts()
     .filter(account => ['student', 'teacher'].includes(account.role))
@@ -1327,11 +1359,11 @@ function renderRegisterStudent(content) {
       account.id.toLowerCase().includes(query));
 
   content.insertAdjacentHTML('beforeend', `
-    <h3 class="admin-page-title">Register Student</h3>
+    <h3 class="admin-page-title">Register</h3>
+    <div class="account-registration-grid">
     <section class="settings-section account-registration-section">
-      <h4>New Student Account</h4>
-      <p>Student accounts are created in this browser's local storage and can sign in using their Student ID and password.</p>
-      <form class="account-registration-form" novalidate onsubmit="submitStudentRegistration(event)">
+      <h4>Student Registration</h4>
+      <form class="account-registration-form" data-account-role="student" novalidate onsubmit="submitStudentRegistration(event)">
         <div class="admin-inline-message" data-admin-form-message role="alert" aria-live="polite" hidden></div>
         <div class="admin-form-field">
           <label for="studentName">Student Name</label>
@@ -1348,9 +1380,32 @@ function renderRegisterStudent(content) {
           <input id="studentPassword" name="studentPassword" type="password" autocomplete="new-password" minlength="6" required>
           <small class="admin-field-error" hidden></small>
         </div>
-        <button class="btn settings-save" type="submit">Register Student</button>
+        <button class="btn settings-save" type="submit">Register</button>
       </form>
     </section>
+    <section class="settings-section account-registration-section">
+      <h4>Teacher Registration</h4>
+      <form class="account-registration-form" data-account-role="teacher" novalidate onsubmit="submitTeacherRegistration(event)">
+        <div class="admin-inline-message" data-admin-form-message role="alert" aria-live="polite" hidden></div>
+        <div class="admin-form-field">
+          <label for="teacherName">Teacher Name</label>
+          <input id="teacherName" name="teacherName" type="text" autocomplete="name" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <div class="admin-form-field">
+          <label for="teacherId">Teacher ID</label>
+          <input id="teacherId" name="teacherId" type="text" autocomplete="off" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <div class="admin-form-field">
+          <label for="teacherPassword">Password <span class="account-field-hint">(at least 6 characters)</span></label>
+          <input id="teacherPassword" name="teacherPassword" type="password" autocomplete="new-password" minlength="6" required>
+          <small class="admin-field-error" hidden></small>
+        </div>
+        <button class="btn settings-save" type="submit">Register</button>
+      </form>
+    </section>
+    </div>
     <section class="account-management-section">
       <h4>Manage Student and Teacher Accounts</h4>
       <p>Search by name or account ID. Only account names can be changed here.</p>
@@ -1387,7 +1442,7 @@ function render() {
   if (currentView === 'books') renderBooks(content);
   else if (currentView === 'requests') renderRequests(content);
   else if (currentView === 'settings') renderSettings(content);
-  else if (currentView === 'register') renderRegisterStudent(content);
+  else if (currentView === 'register') renderRegisterPage(content);
   else renderAbout(content);
 }
 

@@ -29,18 +29,29 @@
     <div id="loginError" role="alert"></div>
 
     <div class="field">
-      <input type="text" id="loginName" placeholder="Account ID" autocomplete="username">
+      <input type="text" id="loginName" placeholder="Name" autocomplete="username">
     </div>
     <div class="field">
       <input type="password" id="loginId" placeholder="Password" autocomplete="current-password">
-      <button type="button" class="eye" id="eyeBtn" aria-label="Show password" onclick="togglePass()">👁</button>
+      <button type="button" class="eye" id="eyeBtn" aria-label="Show password" aria-pressed="false" onclick="togglePass()">
+        <svg class="password-eye" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        <svg class="password-eye-off" viewBox="0 0 24 24" aria-hidden="true" hidden>
+          <path d="m3 3 18 18"></path>
+          <path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a15.8 15.8 0 0 1-3.1 3.9"></path>
+          <path d="M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.7 10.7 0 0 0 4-.8"></path>
+          <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
+        </svg>
+      </button>
     </div>
 
     <button id="loginButton" onclick="doLogin()">LOGIN</button>
 
     <button type="button" class="link-btn fp-link" id="forgotLink" onclick="openForgot()">Forgot Password?</button>
 
-    <p class="hint" id="loginHint">Demo ID: 202411059 / password</p>
+    <p class="hint" id="loginHint">Demo Name: student / password</p>
     <button class="link-btn" id="adminLink" onclick="setRole('admin')">Library staff? Admin login</button>
   </div>
 </div>
@@ -74,8 +85,18 @@
 
     <!-- Step 3: new password -->
     <div class="fp-step" id="fpStep3">
-      <div class="field"><input type="password" id="fpNewPass" placeholder="New Password (min. 6 characters)" autocomplete="new-password" aria-label="New password"></div>
-      <div class="field"><input type="password" id="fpConfirmPass" placeholder="Confirm Password" autocomplete="new-password" aria-label="Confirm password"></div>
+      <div class="field"><input class="has-password-toggle" type="password" id="fpNewPass" placeholder="New Password (min. 6 characters)" autocomplete="new-password" aria-label="New password">
+        <button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePasswordField(this)">
+          <svg class="password-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          <svg class="password-eye-off" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18"></path><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a15.8 15.8 0 0 1-3.1 3.9"></path><path d="M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.7 10.7 0 0 0 4-.8"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>
+        </button>
+      </div>
+      <div class="field"><input class="has-password-toggle" type="password" id="fpConfirmPass" placeholder="Confirm Password" autocomplete="new-password" aria-label="Confirm password">
+        <button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePasswordField(this)">
+          <svg class="password-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          <svg class="password-eye-off" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="m3 3 18 18"></path><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a15.8 15.8 0 0 1-3.1 3.9"></path><path d="M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.7 10.7 0 0 0 4-.8"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>
+        </button>
+      </div>
       <button type="button" class="fp-btn" onclick="resetPassword()">Reset Password</button>
     </div>
 
@@ -152,7 +173,7 @@ function setRole(role) {
   const label = role.charAt(0).toUpperCase() + role.slice(1);
   document.getElementById("loginTitle").textContent = label + " login";
   document.getElementById("loginHint").textContent =
-    "Demo ID: " + accounts[role].id + " / " + accounts[role].pass;
+    "Demo Name: " + accounts[role].name + " / " + accounts[role].pass;
 
   if (role === "admin" && !adminShown) {
     // 1) Admin tab pops in on the right  2) pill slides from Teacher to Admin
@@ -168,6 +189,8 @@ function setRole(role) {
   clearValidation();
   document.getElementById("loginName").value = "";
   document.getElementById("loginId").value = "";
+  const loginPasswordToggle = document.getElementById("eyeBtn");
+  if (document.getElementById("loginId").type === "text") togglePasswordField(loginPasswordToggle);
   document.getElementById("loginName").focus();
 }
 
@@ -187,10 +210,17 @@ function showError(msg) {
 }
 
 function togglePass() {
-  const input = document.getElementById("loginId");
+  togglePasswordField(document.getElementById("eyeBtn"));
+}
+
+function togglePasswordField(button) {
+  const input = button.parentElement.querySelector('input[type="password"], input[type="text"]');
   const show = input.type === "password";
   input.type = show ? "text" : "password";
-  document.getElementById("eyeBtn").setAttribute("aria-label", show ? "Hide password" : "Show password");
+  button.querySelector(".password-eye").hidden = show;
+  button.querySelector(".password-eye-off").hidden = !show;
+  button.setAttribute("aria-label", show ? "Hide password" : "Show password");
+  button.setAttribute("aria-pressed", String(show));
 }
 
 function doLogin() {
@@ -330,6 +360,10 @@ function openForgot() {
 
 function resetForgot() {
   ["fpEmail", "fpOtpInput", "fpNewPass", "fpConfirmPass"].forEach(function (id) { fpEl(id).value = ""; });
+  ["fpNewPass", "fpConfirmPass"].forEach(function (id) {
+    const input = fpEl(id);
+    if (input.type === "text") togglePasswordField(input.parentElement.querySelector(".eye"));
+  });
   fpOtp = null;
   fpVerified = false;
   showStep(1);
@@ -397,7 +431,7 @@ function resetPassword() {
   showStep(4);
 
   // keep the login page in sync
-  fpEl("loginHint").textContent = "Demo ID: " + accounts[currentRole].id + " / " + accounts[currentRole].pass;
+  fpEl("loginHint").textContent =   "Demo Name: " + accounts[currentRole].name + " / " + accounts[currentRole].pass;
   document.getElementById("loginId").value = "";
 }
 
