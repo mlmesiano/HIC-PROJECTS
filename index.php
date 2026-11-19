@@ -29,10 +29,10 @@
     <div id="loginError" role="alert"></div>
 
     <div class="field">
-      <input type="text" id="loginName" placeholder="Name" autocomplete="username">
+      <input type="text" id="loginAccountId" placeholder="Account ID" autocomplete="username" required aria-label="Account ID">
     </div>
     <div class="field">
-      <input type="password" id="loginId" placeholder="Password" autocomplete="current-password">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" required aria-label="Password">
       <button type="button" class="eye" id="eyeBtn" aria-label="Show password" aria-pressed="false" onclick="togglePass()">
         <svg class="password-eye" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"></path>
@@ -51,7 +51,7 @@
 
     <button type="button" class="link-btn fp-link" id="forgotLink" onclick="openForgot()">Forgot Password?</button>
 
-    <p class="hint" id="loginHint">Demo Name: student / password</p>
+    <p class="hint" id="loginHint">Demo Account ID: 202411059 / password</p>
     <button class="link-btn" id="adminLink" onclick="setRole('admin')">Library staff? Admin login</button>
   </div>
 </div>
@@ -173,7 +173,7 @@ function setRole(role) {
   const label = role.charAt(0).toUpperCase() + role.slice(1);
   document.getElementById("loginTitle").textContent = label + " login";
   document.getElementById("loginHint").textContent =
-    "Demo Name: " + accounts[role].name + " / " + accounts[role].pass;
+    "Demo Account ID: " + accounts[role].id + " / " + accounts[role].pass;
 
   if (role === "admin" && !adminShown) {
     // 1) Admin tab pops in on the right  2) pill slides from Teacher to Admin
@@ -187,19 +187,19 @@ function setRole(role) {
   }
 
   clearValidation();
-  document.getElementById("loginName").value = "";
-  document.getElementById("loginId").value = "";
+  document.getElementById("loginAccountId").value = "";
+  document.getElementById("loginPassword").value = "";
   const loginPasswordToggle = document.getElementById("eyeBtn");
-  if (document.getElementById("loginId").type === "text") togglePasswordField(loginPasswordToggle);
-  document.getElementById("loginName").focus();
+  if (document.getElementById("loginPassword").type === "text") togglePasswordField(loginPasswordToggle);
+  document.getElementById("loginAccountId").focus();
 }
 
 window.addEventListener("resize", moveIndicator);
 window.addEventListener("load", function () { trackIndicator(100); });
 
 function clearValidation() {
-  document.getElementById("loginName").classList.remove("login-input-error", "login-input-valid");
-  document.getElementById("loginId").classList.remove("login-input-error", "login-input-valid");
+  document.getElementById("loginAccountId").classList.remove("login-input-error", "login-input-valid");
+  document.getElementById("loginPassword").classList.remove("login-input-error", "login-input-valid");
   document.getElementById("loginError").style.display = "none";
 }
 
@@ -224,34 +224,45 @@ function togglePasswordField(button) {
 }
 
 function doLogin() {
-  const nameInput = document.getElementById("loginName");
-  const passInput = document.getElementById("loginId");
+  const accountIdInput = document.getElementById("loginAccountId");
+  const passInput = document.getElementById("loginPassword");
   const button = document.getElementById("loginButton");
 
-  const identifier = nameInput.value.trim();
+  const identifier = accountIdInput.value.trim();
   const pass = passInput.value.trim();
 
   clearValidation();
 
-  // Empty fields -> red border
-  if (!identifier || !pass) {
-    showError("Please fill in all required fields.");
-    if (!identifier) nameInput.classList.add("login-input-error");
-    if (!pass) passInput.classList.add("login-input-error");
-    (!identifier ? nameInput : passInput).focus();
+  if (!identifier) {
+    accountIdInput.classList.add("login-input-error");
+    showError("Account ID is required.");
+    accountIdInput.focus();
+    return;
+  }
+  if (!pass) {
+    passInput.classList.add("login-input-error");
+    showError("Password is required.");
+    passInput.focus();
     return;
   }
 
   const account = findLoginAccount(currentRole, identifier);
-  const correctName = Boolean(account);
   const correctPass = Boolean(account && pass === account.password);
 
-  if (!correctName || !correctPass) {
-    nameInput.classList.add(correctName ? "login-input-valid" : "login-input-error");
-    passInput.classList.add(correctPass ? "login-input-valid" : "login-input-error");
-    showError("Invalid login. No matching " + currentRole + " account, try again.");
+  if (!account) {
+    accountIdInput.classList.add("login-input-error");
+    showError("No " + currentRole + " account found with this Account ID.");
     return;
   }
+  if (!correctPass) {
+    accountIdInput.classList.add("login-input-valid");
+    passInput.classList.add("login-input-error");
+    showError("Incorrect password. Please try again.");
+    return;
+  }
+
+  accountIdInput.classList.add("login-input-valid");
+  passInput.classList.add("login-input-valid");
 
   // Loading effect
   button.disabled = true;
@@ -291,18 +302,18 @@ function validateLoginField(input) {
   const value = input.value.trim();
   if (!value) return;
 
-  if (input.id === "loginName") {
+  if (input.id === "loginAccountId") {
     if (findLoginAccount(currentRole, value)) input.classList.add("login-input-valid");
   } else {
     input.classList.add("login-input-valid");
   }
 }
 
-document.getElementById("loginName").addEventListener("input", function () { validateLoginField(this); });
-document.getElementById("loginId").addEventListener("input", function () { validateLoginField(this); });
+document.getElementById("loginAccountId").addEventListener("input", function () { validateLoginField(this); });
+document.getElementById("loginPassword").addEventListener("input", function () { validateLoginField(this); });
 
 // Enter key submits
-["loginName", "loginId"].forEach(function (id) {
+["loginAccountId", "loginPassword"].forEach(function (id) {
   document.getElementById(id).addEventListener("keydown", function (e) {
     if (e.key === "Enter") doLogin();
   });
@@ -431,8 +442,8 @@ function resetPassword() {
   showStep(4);
 
   // keep the login page in sync
-  fpEl("loginHint").textContent =   "Demo Name: " + accounts[currentRole].name + " / " + accounts[currentRole].pass;
-  document.getElementById("loginId").value = "";
+  fpEl("loginHint").textContent = "Demo Account ID: " + accounts[currentRole].id + " / " + accounts[currentRole].pass;
+  document.getElementById("loginPassword").value = "";
 }
 
 // Click outside the modal to close

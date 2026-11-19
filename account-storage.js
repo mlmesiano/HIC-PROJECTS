@@ -114,11 +114,7 @@ function findLoginAccount(role, identifier) {
   const normalizedRole = normalizeAccountRole(role);
   const value = String(identifier ?? '').trim().toLowerCase();
   const accounts = getLibraryAccounts().filter(account => account.role === normalizedRole);
-  const byId = accounts.find(account => account.id.toLowerCase() === value);
-  if (byId) return byId;
-
-  const nameMatches = accounts.filter(account => account.name.trim().toLowerCase() === value);
-  return nameMatches.length === 1 ? nameMatches[0] : null;
+  return accounts.find(account => account.id.toLowerCase() === value) || null;
 }
 
 function createAccountUid() {
